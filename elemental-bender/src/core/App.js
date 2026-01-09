@@ -5,9 +5,11 @@ import { PoseProcessor } from '../detection/PoseProcessor.js';
 import { SegmentationMask } from '../detection/SegmentationMask.js';
 import { SceneSetup } from '../rendering/SceneSetup.js';
 import { BodyRenderer } from '../rendering/BodyRenderer.js';
+import { PointCloudBodyRenderer } from '../rendering/PointCloudBodyRenderer.js';
 import { HandRenderer } from '../rendering/HandRenderer.js';
 import { ChargeSystem } from '../systems/ChargeSystem.js';
 import { ParticleSystem } from '../systems/ParticleSystem.js';
+import { GPUParticleSystem } from '../systems/GPUParticleSystem.js';
 import { CycleSystem } from '../systems/CycleSystem.js';
 import { InputManager } from './InputManager.js';
 import { FireElement } from '../elements/FireElement.js';
@@ -24,6 +26,7 @@ export class App {
     this.segmentationMask = new SegmentationMask();
     this.scene = new SceneSetup();
     this.bodyRenderer = null;
+    this.pointCloudBody = null;  // Point cloud silhouette
     this.handRenderer = null;
     this.particleSystem = null;
     this.chargeSystem = new ChargeSystem();
@@ -46,6 +49,7 @@ export class App {
     this.frameCount = 0;
     this.fps = 0;
     this.lastFpsUpdate = 0;
+    this.lastParticleCount = 0;
 
     // DOM elements
     this.video = null;
@@ -89,19 +93,45 @@ export class App {
       // Initialize procedural brushes
       this.brushes.initialize();
 
-      // Initialize body renderer
+      // Initialize point cloud body renderer (replaces filled silhouette)
+      this.pointCloudBody = new PointCloudBodyRenderer(this.scene);
+      this.pointCloudBody.initialize(this.scene.getWidth(), this.scene.getHeight());
+      this.pointCloudBody.setElement(this.currentElement);
+
+      // Keep legacy body renderer for potential fallback/blend (hidden by default)
       this.bodyRenderer = new BodyRenderer(this.scene);
       this.bodyRenderer.initialize(this.scene.getWidth(), this.scene.getHeight());
       this.bodyRenderer.setElement(this.currentElement);
+      // Hide the filled silhouette - we're using point cloud now
+      if (this.bodyRenderer.bodyMesh) {
+        this.bodyRenderer.bodyMesh.visible = false;
+      }
+      if (this.bodyRenderer.glowMesh) {
+        this.bodyRenderer.glowMesh.visible = false;
+      }
 
       // Initialize hand renderer
       this.handRenderer = new HandRenderer(this.scene);
       this.handRenderer.initialize();
       this.handRenderer.setElement(this.currentElement);
 
-      // Initialize particle system
-      this.particleSystem = new ParticleSystem(this.scene);
-      this.particleSystem.initialize();
+      // Initialize particle system - try GPU version first, fall back to legacy
+      if (this.scene.hasWebGPU()) {
+        try {
+          console.log('Attempting GPUParticleSystem with WebGPU compute shaders');
+          this.particleSystem = new GPUParticleSystem(this.scene);
+          await this.particleSystem.initialize();
+          console.log('GPUParticleSystem initialized successfully');
+        } catch (gpuError) {
+          console.warn('GPUParticleSystem failed, falling back to legacy:', gpuError);
+          this.particleSystem = new ParticleSystem(this.scene);
+          this.particleSystem.initialize();
+        }
+      } else {
+        console.log('Using legacy ParticleSystem (WebGL)');
+        this.particleSystem = new ParticleSystem(this.scene);
+        this.particleSystem.initialize();
+      }
       this.particleSystem.setElement(this.currentElement);
 
       // Initialize all elements
@@ -131,8 +161,10 @@ export class App {
       return true;
     } catch (error) {
       console.error('Initialization failed:', error);
+      console.error('Stack:', error.stack);
       this.updateLoadingText(`Error: ${error.message}`);
-      return false;
+      // Re-throw to allow main.js to show more details
+      throw error;
     }
   }
 
@@ -244,6 +276,13 @@ export class App {
             maskWidth,
             maskHeight
           );
+
+          // Update point cloud body with same mask
+          this.pointCloudBody.updateMask(
+            processedMask,
+            maskWidth,
+            maskHeight
+          );
         }
       }
 
@@ -252,6 +291,7 @@ export class App {
 
       if (chargeData) {
         this.bodyRenderer.setChargeLevel(chargeData.level);
+        this.pointCloudBody.setChargeLevel(chargeData.level);
         this.handRenderer.setChargeLevel(chargeData.level);
         this.activeElement?.setChargeLevel(chargeData.level);
       }
@@ -274,17 +314,31 @@ export class App {
     // Update renderers
     const time = this.scene.getElapsedTime();
     this.bodyRenderer.update(time);
+    this.pointCloudBody.update(time, deltaTime);
     this.handRenderer.update(time, this.lastPoseData?.hands, this.mirrorMode);
 
     // Update active element (spawns particles, etc.)
     this.activeElement?.update(deltaTime, this.lastPoseData);
 
     // Update particle system
-    const particleCount = this.particleSystem.update(deltaTime, this.lastPoseData?.bodyCenter);
+    // GPUParticleSystem.update is async but we don't need to await it
+    // The GPU compute will run in parallel and sync automatically on render
+    const updateResult = this.particleSystem.update(deltaTime, this.lastPoseData?.bodyCenter);
+
+    // Handle both sync (legacy) and async (GPU) particle counts
+    if (updateResult && typeof updateResult.then === 'function') {
+      // Async GPU particle system - use cached count
+      updateResult.then(() => {
+        this.lastParticleCount = this.particleSystem.getActiveCount();
+      }).catch(err => console.warn('Particle update error:', err));
+    } else {
+      // Sync legacy particle system
+      this.lastParticleCount = updateResult || 0;
+    }
 
     // Update particle count in debug
     if (this.inputManager.getDebugVisible()) {
-      document.getElementById('particle-count').textContent = particleCount;
+      document.getElementById('particle-count').textContent = this.lastParticleCount || 0;
     }
 
     // Render scene
@@ -372,6 +426,7 @@ export class App {
 
     this.currentElement = elementType;
     this.bodyRenderer.setElement(elementType);
+    this.pointCloudBody.setElement(elementType);
     this.handRenderer.setElement(elementType);
     this.particleSystem.setElement(elementType);
 
@@ -412,12 +467,14 @@ export class App {
     const height = window.innerHeight;
 
     this.bodyRenderer?.onResize(width, height);
+    this.pointCloudBody?.onResize(width, height);
   }
 
   dispose() {
     this.isRunning = false;
     this.mediaPipe.dispose();
     this.bodyRenderer?.dispose();
+    this.pointCloudBody?.dispose();
     this.handRenderer?.dispose();
     this.particleSystem?.dispose();
     this.brushes?.dispose();

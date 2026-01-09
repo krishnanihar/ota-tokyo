@@ -22,13 +22,16 @@ async function init() {
   }
 }
 
-function showError(message) {
+function showError(message, details = '') {
   const loadingEl = document.getElementById('loading');
   loadingEl.innerHTML = `
     <div style="color: #E34234; font-size: 24px; margin-bottom: 10px;">Error</div>
     <div>${message}</div>
+    ${details ? `<div style="margin-top: 10px; font-size: 12px; color: rgba(255,254,240,0.5); max-width: 500px; word-break: break-all;">${details}</div>` : ''}
     <div style="margin-top: 20px; font-size: 14px; color: rgba(255,254,240,0.6);">
       Please ensure camera permissions are granted and try refreshing the page.
+      <br><br>
+      Check browser console (F12) for detailed error information.
     </div>
   `;
 }
@@ -43,5 +46,6 @@ window.addEventListener('beforeunload', () => {
 // Start the application
 init().catch(error => {
   console.error('Fatal error:', error);
-  showError(error.message);
+  console.error('Stack:', error.stack);
+  showError(error.message, error.stack?.split('\n')[1] || '');
 });

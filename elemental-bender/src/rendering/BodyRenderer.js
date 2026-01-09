@@ -70,9 +70,44 @@ export class BodyRenderer {
 
         varying vec2 vUv;
 
-        // Simple noise function for energy effect
-        float noise(vec2 st) {
-          return fract(sin(dot(st.xy, vec2(12.9898, 78.233))) * 43758.5453123);
+        // Improved noise functions for dramatic effects
+        float hash(vec2 p) {
+          return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+        }
+
+        float noise(vec2 p) {
+          vec2 i = floor(p);
+          vec2 f = fract(p);
+          f = f * f * (3.0 - 2.0 * f);
+          float a = hash(i);
+          float b = hash(i + vec2(1.0, 0.0));
+          float c = hash(i + vec2(0.0, 1.0));
+          float d = hash(i + vec2(1.0, 1.0));
+          return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+        }
+
+        // Caustic light pattern for water
+        float caustic(vec2 uv, float t) {
+          vec2 p = uv * 8.0;
+          float c = 0.0;
+          for (float i = 1.0; i < 4.0; i++) {
+            float scale = pow(2.0, i);
+            vec2 offset = vec2(
+              sin(t * 0.5 + i) * 0.5,
+              cos(t * 0.3 + i * 1.3) * 0.5
+            );
+            c += sin(p.x * scale + t + offset.x) * sin(p.y * scale + t * 0.7 + offset.y) / scale;
+          }
+          return 0.5 + 0.5 * c;
+        }
+
+        // Flowing energy pattern
+        float flowingEnergy(vec2 uv, vec2 dir, float t) {
+          vec2 flowUv = uv + dir * t * 0.8;
+          float energy = noise(flowUv * 12.0 + t);
+          energy *= noise(flowUv * 20.0 - t * 0.7);
+          energy += noise(flowUv * 6.0 + t * 1.5) * 0.5;
+          return energy;
         }
 
         void main() {
@@ -82,30 +117,52 @@ export class BodyRenderer {
             discard;
           }
 
-          // Base silhouette
+          // Base silhouette - slightly transparent
           vec3 color = silhouetteColor;
           float alpha = opacity * mask;
 
-          // Energy effect inside body (stronger at higher charge)
-          if (chargeLevel > 0.0) {
-            // Animated energy based on direction
-            vec2 energyUv = vUv + energyDirection * time * 0.5;
-            float energy = noise(energyUv * 10.0 + time);
-            energy *= noise(energyUv * 20.0 - time * 0.7);
+          // DRAMATIC energy effect inside body
+          // Always show some energy even at low charge
+          float baseEnergy = 0.15;
+          float energyIntensity = baseEnergy + chargeLevel * 0.7;
 
-            // Modulate by charge level
-            energy *= chargeLevel * 0.5;
+          // Animated flowing energy based on element direction
+          float energy = flowingEnergy(vUv, energyDirection, time);
+          energy *= energyIntensity;
 
-            // Edge glow effect
-            float edge = smoothstep(0.3, 0.5, mask) - smoothstep(0.5, 0.7, mask);
-            edge = max(edge, 0.0) * chargeLevel;
+          // Caustic light effect (dramatic for water, subtle for others)
+          float causticEffect = caustic(vUv, time);
+          // Boost caustic for water (when direction is down)
+          float isWater = step(-0.5, -energyDirection.y);
+          causticEffect = mix(causticEffect * 0.3, causticEffect * 0.8, isWater);
+          energy = mix(energy, energy * causticEffect, 0.5);
 
-            // Mix in element color
-            color = mix(color, elementColor, energy * 0.3);
-            color = mix(color, glowColor, edge * 0.5);
+          // Pulsing energy waves
+          float pulse = sin(time * 3.0 + vUv.y * 10.0) * 0.5 + 0.5;
+          energy += pulse * energyIntensity * 0.2;
 
-            // Add subtle internal glow
-            color += elementColor * energy * 0.2 * chargeLevel;
+          // Strong edge glow effect
+          float edgeOuter = smoothstep(0.2, 0.5, mask);
+          float edgeInner = smoothstep(0.5, 0.8, mask);
+          float edge = edgeOuter - edgeInner;
+          edge = max(edge, 0.0) * (0.3 + chargeLevel * 0.7);
+
+          // Inner core glow
+          float core = smoothstep(0.6, 0.9, mask) * energyIntensity * 0.5;
+
+          // Mix in element color - MORE visible
+          color = mix(color, elementColor, energy * 0.5);
+          color = mix(color, glowColor, edge * 0.7);
+          color += elementColor * core;
+
+          // Add vibrant internal glow
+          color += elementColor * energy * 0.4;
+          color += glowColor * edge * 0.3;
+
+          // Boost brightness at high charge
+          if (chargeLevel > 0.5) {
+            float boost = (chargeLevel - 0.5) * 0.4;
+            color += glowColor * boost * pulse;
           }
 
           gl_FragColor = vec4(color, alpha);

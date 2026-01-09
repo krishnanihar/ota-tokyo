@@ -28,10 +28,10 @@ export const CONFIG = {
   TRANSITION_DURATION: 2000,    // 2 second blend between elements
   ELEMENT_ORDER: ['fire', 'water', 'earth', 'air'],
 
-  // Particles - INCREASED for dramatic effect
-  MAX_PARTICLES: 8000,
-  INITIAL_PARTICLES: 3000,
-  PARTICLE_POOL_SIZE: 10000,
+  // Particles - MASSIVE COUNT with smaller sizes
+  MAX_PARTICLES: 25000,
+  INITIAL_PARTICLES: 8000,
+  PARTICLE_POOL_SIZE: 35000,
 
   // Body Rendering
   SILHOUETTE_OPACITY: 0.7,      // 70% opacity for black silhouette
@@ -73,12 +73,12 @@ export const COLORS = {
     glow: '#FF6B4A'
   },
 
-  // Water - Hokusai Wave Style
+  // Water - Hokusai Great Wave Style (more saturated)
   water: {
-    primary: '#003153',       // Prussian Blue
-    secondary: '#264653',     // Indigo
-    accent: '#F5F5F5',        // Foam White
-    glow: '#4A90D9'
+    primary: '#1a4c7c',       // Deep Prussian Blue (more visible)
+    secondary: '#2d6a9f',     // Mid Blue (wave highlights)
+    accent: '#f0f5ff',        // Foam White (slightly blue tinted)
+    glow: '#5ba3d9'           // Lighter glow for foam edges
   },
 
   // Earth - Sumi-e Ink Wash Style
@@ -103,45 +103,52 @@ export const COLORS = {
   silhouette: '#000000'       // Pure black for body
 };
 
-// Element Behaviors
+// Element Behaviors - SMALL PARTICLES, HIGH COUNT
 export const ELEMENT_BEHAVIORS = {
   fire: {
     particleDirection: 'up',      // Flows upward inside body
-    speed: 1.5,                   // Fast, volatile
-    decay: 0.95,                  // Quick burn-out
-    trailLength: 0.8,
-    releaseForce: 1.2,
-    particleSize: { min: 2, max: 8 },
+    speed: 1.8,                   // Fast, volatile
+    decay: 0.92,                  // Quick burn-out
+    trailLength: 1.2,
+    releaseForce: 2.0,            // MORE POWERFUL release
+    particleSize: { min: 2, max: 8 },   // SMALLER particles
+    spawnRate: 30,                // MORE particles
     description: 'Fire flows UPWARD inside silhouette'
   },
 
   water: {
     particleDirection: 'down',    // Flows downward inside body
-    speed: 1.0,                   // Medium, fluid
-    decay: 0.98,                  // Flowing dissipation
-    trailLength: 1.2,
-    releaseForce: 1.0,
-    particleSize: { min: 3, max: 10 },
-    description: 'Water flows DOWNWARD inside silhouette'
+    speed: 1.2,                   // Medium, fluid
+    decay: 0.96,                  // Flowing dissipation
+    trailLength: 2.0,             // Long silk ribbon trails
+    releaseForce: 1.8,            // MORE POWERFUL release
+    particleSize: { min: 2, max: 10 },  // SMALLER particles
+    spawnRate: 35,                // MORE particles for density
+    ribbonEffect: true,           // Enable ribbon-like particle chains
+    waveAmplitude: 25,            // Hokusai wave curl intensity
+    foamDensity: 0.5,             // More foam particles
+    description: 'Water flows DOWNWARD inside silhouette - Hokusai style'
   },
 
   earth: {
     particleDirection: 'center',  // Settles toward core
-    speed: 0.6,                   // Slow, deliberate
-    decay: 0.99,                  // Lingers longest
-    trailLength: 0.5,
-    releaseForce: 0.8,
-    particleSize: { min: 4, max: 15 },
+    speed: 0.7,                   // Slow, deliberate
+    decay: 0.98,                  // Lingers longest
+    trailLength: 0.8,
+    releaseForce: 1.5,            // MORE POWERFUL release
+    particleSize: { min: 3, max: 12 },  // SMALLER chunks
+    spawnRate: 20,                // More particles
     description: 'Dense particles settle toward body core'
   },
 
   air: {
     particleDirection: 'swirl',   // Constantly in motion
-    speed: 2.0,                   // Instant, weightless
-    decay: 0.92,                  // Quick scatter
-    trailLength: 1.5,
-    releaseForce: 1.5,
-    particleSize: { min: 1, max: 6 },
+    speed: 2.5,                   // Instant, weightless
+    decay: 0.88,                  // Quick scatter
+    trailLength: 2.5,
+    releaseForce: 2.5,            // MORE POWERFUL release
+    particleSize: { min: 1, max: 6 },   // TINY particles
+    spawnRate: 50,                // LOTS of particles swirling
     description: 'Swirling energy, never settles'
   }
 };

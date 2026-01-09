@@ -109,23 +109,34 @@ export class ParticleSystem {
         varying float vColorIndex;
         varying vec2 vUv;
 
+        // Simplex noise for organic flow
+        float hash(vec2 p) {
+          return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+        }
+
+        float noise(vec2 p) {
+          vec2 i = floor(p);
+          vec2 f = fract(p);
+          f = f * f * (3.0 - 2.0 * f);
+          float a = hash(i);
+          float b = hash(i + vec2(1.0, 0.0));
+          float c = hash(i + vec2(0.0, 1.0));
+          float d = hash(i + vec2(1.0, 1.0));
+          return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+        }
+
         void main() {
-          // Soft brush stroke shape
           vec2 center = vUv - 0.5;
           float dist = length(center);
 
-          // INTENSE brush stroke falloff - brighter center
-          float alpha = smoothstep(0.5, 0.1, dist);
-          alpha *= vAlpha;
+          // UKIYO-E STYLE: Sharper edges, more graphic
+          // Hard-ish circle with slight organic variation
+          float organicNoise = noise(vUv * 8.0 + time * 0.15) * 0.08;
+          float sharpEdge = smoothstep(0.45 + organicNoise, 0.35 + organicNoise, dist);
 
-          // Add some variation for organic feel
-          float noise = fract(sin(dot(vUv, vec2(12.9898, 78.233))) * 43758.5453);
-          alpha *= 0.9 + noise * 0.1;
+          float alpha = sharpEdge * vAlpha;
 
-          // BOOST alpha for more visibility
-          alpha *= 1.5;
-
-          if (alpha < 0.01) discard;
+          if (alpha < 0.05) discard;
 
           // Select color based on index
           vec3 color;
@@ -137,20 +148,23 @@ export class ParticleSystem {
             color = accentColor;
           }
 
-          // INTENSE glow effect - much stronger
-          float glow = smoothstep(0.5, 0.0, dist) * 0.6;
-          color = mix(color, glowColor, glow);
+          // Subtle inner gradient for depth (like woodblock ink density)
+          float innerDark = smoothstep(0.0, 0.3, dist) * 0.15;
+          color = color * (1.0 - innerDark);
 
-          // Add brightness boost to core
-          float coreBrightness = smoothstep(0.3, 0.0, dist) * 0.4;
-          color += vec3(coreBrightness);
+          // Very subtle edge highlight
+          float edgeHighlight = smoothstep(0.4, 0.35, dist) * smoothstep(0.25, 0.35, dist);
+          color += glowColor * edgeHighlight * 0.2;
 
-          gl_FragColor = vec4(color, min(alpha, 1.0));
+          // Keep colors saturated and natural
+          color = clamp(color, 0.0, 1.0);
+
+          gl_FragColor = vec4(color, alpha * 0.9);
         }
       `,
       transparent: true,
       depthWrite: false,
-      blending: THREE.AdditiveBlending
+      blending: THREE.NormalBlending // Changed from Additive for more solid colors
     });
 
     // Create instanced mesh
