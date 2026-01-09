@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Elemental Bender</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #0A0A0A;
+    }
+
+    #app {
+      width: 100%;
+      height: 100%;
+      position: relative;
+    }
+
+    #video {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    #canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    #debug {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: #FFFEF0;
+      font-family: monospace;
+      font-size: 12px;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 10px;
+      border-radius: 4px;
+      display: none;
+      z-index: 100;
+    }
+
+    #debug.visible {
+      display: block;
+    }
+
+    #loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #FFFEF0;
+      font-family: 'Segoe UI', sans-serif;
+      font-size: 18px;
+      text-align: center;
+    }
+
+    #loading .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid rgba(255, 254, 240, 0.2);
+      border-top-color: #FFFEF0;
+      border-radius: 50%;
+      margin: 0 auto 15px;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    #ui-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 50;
+    }
+
+    #mode-indicator {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      color: rgba(255, 254, 240, 0.5);
+      font-family: 'Segoe UI', sans-serif;
+      font-size: 14px;
+    }
+
+    #element-indicator {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      color: #FFFEF0;
+      font-family: 'Segoe UI', sans-serif;
+      font-size: 24px;
+      text-transform: uppercase;
+      letter-spacing: 4px;
+      opacity: 0;
+      transition: opacity 0.5s;
+    }
+
+    #element-indicator.visible {
+      opacity: 1;
+    }
+
+    #training-text {
+      position: absolute;
+      top: 15%;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #FFFEF0;
+      font-family: 'Segoe UI', sans-serif;
+      font-size: 28px;
+      text-align: center;
+      opacity: 0;
+      transition: opacity 0.5s;
+    }
+
+    #training-text.visible {
+      opacity: 1;
+    }
+
+    #charge-indicator {
+      position: absolute;
+      bottom: 60px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 8px;
+    }
+
+    #charge-indicator .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: rgba(255, 254, 240, 0.2);
+      transition: background 0.3s, box-shadow 0.3s;
+    }
+
+    #charge-indicator .dot.active {
+      background: #FFFEF0;
+      box-shadow: 0 0 10px #FFFEF0;
+    }
+
+    #status-indicator {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      color: rgba(255, 254, 240, 0.7);
+      font-family: 'Segoe UI', sans-serif;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(0, 0, 0, 0.5);
+      padding: 8px 12px;
+      border-radius: 4px;
+    }
+
+    #status-icon {
+      font-size: 12px;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    #status-icon.detecting {
+      color: #4ADE80;
+      animation: none;
+    }
+
+    #status-icon.searching {
+      color: #FBBF24;
+    }
+
+    #status-icon.error {
+      color: #F87171;
+      animation: none;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 0.5; }
+      50% { opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <video id="video" autoplay playsinline></video>
+    <canvas id="canvas"></canvas>
+
+    <div id="loading">
+      <div class="spinner"></div>
+      <div>Initializing Elemental Bender...</div>
+    </div>
+
+    <div id="debug">
+      <div>FPS: <span id="fps">0</span></div>
+      <div>Velocity: <span id="velocity">0</span></div>
+      <div>Charge: <span id="charge-level">0</span></div>
+      <div>Element: <span id="current-element">-</span></div>
+      <div>Particles: <span id="particle-count">0</span></div>
+    </div>
+
+    <div id="ui-overlay">
+      <div id="element-indicator"></div>
+      <div id="training-text"></div>
+      <div id="status-indicator">
+        <span id="status-icon">●</span>
+        <span id="status-text">Initializing...</span>
+      </div>
+      <div id="charge-indicator">
+        <div class="dot"></div>
+        <div class="dot"></div>
+        <div class="dot"></div>
+        <div class="dot"></div>
+      </div>
+      <div id="mode-indicator">D=debug | F=fullscreen | M=mirror | Space=next element | 3-6=fire/water/earth/air</div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

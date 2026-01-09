@@ -1,0 +1,18 @@
+{
+  "name": "elemental-bender",
+  "version": "1.0.0",
+  "description": "Interactive body-tracking elemental bender installation with Ukiyo-e visual style",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@mediapipe/tasks-vision": "^0.10.21",
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  }
+}
