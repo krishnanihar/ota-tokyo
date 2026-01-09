@@ -275,6 +275,11 @@ export class App {
             ? this.mirrorMaskData(maskData, maskWidth, maskHeight)
             : maskData;
 
+          // Update segmentationMask with mirrored data so particles spawn correctly
+          if (this.mirrorMode) {
+            this.segmentationMask.setMirroredData(processedMask);
+          }
+
           this.bodyRenderer.updateMask(
             processedMask,
             maskWidth,

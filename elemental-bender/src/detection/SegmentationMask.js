@@ -214,4 +214,9 @@ export class SegmentationMask {
   getRawData() {
     return this.maskData;
   }
+
+  // Update stored mask data with mirrored version for mirror mode
+  setMirroredData(mirroredData) {
+    this.maskData = mirroredData;
+  }
 }
