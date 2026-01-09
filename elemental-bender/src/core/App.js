@@ -93,22 +93,21 @@ export class App {
       // Initialize procedural brushes
       this.brushes.initialize();
 
-      // Initialize point cloud body renderer (replaces filled silhouette)
+      // Point cloud body renderer - DISABLED in favor of solid silhouette
+      // Keeping initialization for potential hybrid mode later
       this.pointCloudBody = new PointCloudBodyRenderer(this.scene);
       this.pointCloudBody.initialize(this.scene.getWidth(), this.scene.getHeight());
       this.pointCloudBody.setElement(this.currentElement);
+      // Hide point cloud - using solid body silhouette instead
+      if (this.pointCloudBody.points) {
+        this.pointCloudBody.points.visible = false;
+      }
 
-      // Keep legacy body renderer for potential fallback/blend (hidden by default)
+      // Solid body silhouette renderer - PRIMARY body visualization
       this.bodyRenderer = new BodyRenderer(this.scene);
       this.bodyRenderer.initialize(this.scene.getWidth(), this.scene.getHeight());
       this.bodyRenderer.setElement(this.currentElement);
-      // Hide the filled silhouette - we're using point cloud now
-      if (this.bodyRenderer.bodyMesh) {
-        this.bodyRenderer.bodyMesh.visible = false;
-      }
-      if (this.bodyRenderer.glowMesh) {
-        this.bodyRenderer.glowMesh.visible = false;
-      }
+      // Body silhouette is now visible - provides solid foundation for energy
 
       // Initialize hand renderer
       this.handRenderer = new HandRenderer(this.scene);
@@ -133,6 +132,11 @@ export class App {
         this.particleSystem.initialize();
       }
       this.particleSystem.setElement(this.currentElement);
+
+      // Set body mask reference for particle containment
+      if (this.particleSystem.setBodyMask) {
+        this.particleSystem.setBodyMask(this.segmentationMask);
+      }
 
       // Initialize all elements
       this.elements.fire = new FireElement(this.particleSystem, this.segmentationMask);
@@ -236,10 +240,10 @@ export class App {
     let poseData = null;
 
     if (detection) {
-      // Process pose data
+      // Process pose data (include worldLandmarks for 3D depth interpolation)
       const hasLandmarks = detection.landmarks?.length > 0;
       poseData = hasLandmarks
-        ? this.poseProcessor.process(detection.landmarks, timestamp)
+        ? this.poseProcessor.process(detection.landmarks, timestamp, detection.worldLandmarks)
         : null;
 
       // Update detection status
@@ -278,6 +282,10 @@ export class App {
           );
 
           // Update point cloud body with same mask
+          // Also pass 3D landmarks for Z-depth interpolation
+          if (poseData?.worldLandmarks3D) {
+            this.pointCloudBody.updateLandmarks(poseData.worldLandmarks3D);
+          }
           this.pointCloudBody.updateMask(
             processedMask,
             maskWidth,
@@ -294,6 +302,22 @@ export class App {
         this.pointCloudBody.setChargeLevel(chargeData.level);
         this.handRenderer.setChargeLevel(chargeData.level);
         this.activeElement?.setChargeLevel(chargeData.level);
+
+        // Update particle system with hand positions and spawn body/hand particles
+        if (this.particleSystem.updateHandPositions && poseData?.hands) {
+          this.particleSystem.updateHandPositions(poseData.hands, this.mirrorMode);
+        }
+
+        // Spawn particles filling the body silhouette
+        if (this.particleSystem.spawnBodyFill && this.isDetecting) {
+          const fillCount = 3 + chargeData.level * 2; // More particles at higher charge
+          this.particleSystem.spawnBodyFill(this.segmentationMask, fillCount, chargeData.level);
+        }
+
+        // Spawn concentrated orb particles at hands
+        if (this.particleSystem.spawnHandOrbs && chargeData.level > 0) {
+          this.particleSystem.spawnHandOrbs(chargeData.level);
+        }
       }
 
       // Handle movement states

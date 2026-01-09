@@ -22,6 +22,13 @@ export class ParticleSystem {
     this.currentElement = 'fire';
     this.elementColors = null;
     this.elementBehavior = null;
+
+    // Body mask reference for containment
+    this.bodyMask = null;
+
+    // Hand positions for orb spawning
+    this.leftHandPos = null;
+    this.rightHandPos = null;
   }
 
   initialize() {
@@ -109,34 +116,20 @@ export class ParticleSystem {
         varying float vColorIndex;
         varying vec2 vUv;
 
-        // Simplex noise for organic flow
-        float hash(vec2 p) {
-          return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-        }
-
-        float noise(vec2 p) {
-          vec2 i = floor(p);
-          vec2 f = fract(p);
-          f = f * f * (3.0 - 2.0 * f);
-          float a = hash(i);
-          float b = hash(i + vec2(1.0, 0.0));
-          float c = hash(i + vec2(0.0, 1.0));
-          float d = hash(i + vec2(1.0, 1.0));
-          return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
-        }
-
         void main() {
           vec2 center = vUv - 0.5;
           float dist = length(center);
 
-          // UKIYO-E STYLE: Sharper edges, more graphic
-          // Hard-ish circle with slight organic variation
-          float organicNoise = noise(vUv * 8.0 + time * 0.15) * 0.08;
-          float sharpEdge = smoothstep(0.45 + organicNoise, 0.35 + organicNoise, dist);
+          // SOFT GLOWING CIRCLES - smooth falloff for energy feel
+          // Soft inner core with gradual fade
+          float softCircle = 1.0 - smoothstep(0.0, 0.5, dist);
 
-          float alpha = sharpEdge * vAlpha;
+          // Add slight glow halo around edge
+          float halo = smoothstep(0.5, 0.3, dist) * smoothstep(0.1, 0.3, dist) * 0.5;
 
-          if (alpha < 0.05) discard;
+          float alpha = (softCircle + halo) * vAlpha;
+
+          if (alpha < 0.02) discard;
 
           // Select color based on index
           vec3 color;
@@ -148,23 +141,19 @@ export class ParticleSystem {
             color = accentColor;
           }
 
-          // Subtle inner gradient for depth (like woodblock ink density)
-          float innerDark = smoothstep(0.0, 0.3, dist) * 0.15;
-          color = color * (1.0 - innerDark);
+          // Bright core, fading to glow color at edges
+          float coreBrightness = 1.0 - smoothstep(0.0, 0.35, dist);
+          color = mix(color, glowColor, 1.0 - coreBrightness);
 
-          // Very subtle edge highlight
-          float edgeHighlight = smoothstep(0.4, 0.35, dist) * smoothstep(0.25, 0.35, dist);
-          color += glowColor * edgeHighlight * 0.2;
+          // Boost brightness for additive blending
+          color *= 1.2;
 
-          // Keep colors saturated and natural
-          color = clamp(color, 0.0, 1.0);
-
-          gl_FragColor = vec4(color, alpha * 0.9);
+          gl_FragColor = vec4(color, alpha);
         }
       `,
       transparent: true,
       depthWrite: false,
-      blending: THREE.NormalBlending // Changed from Additive for more solid colors
+      blending: THREE.AdditiveBlending // Additive for glowing energy effect
     });
 
     // Create instanced mesh
@@ -392,6 +381,149 @@ export class ParticleSystem {
            Math.random() * (behavior.particleSize.max - behavior.particleSize.min);
   }
 
+  // Set body mask reference for containment checking
+  setBodyMask(maskChecker) {
+    this.bodyMask = maskChecker;
+  }
+
+  // Update hand positions for orb spawning
+  updateHandPositions(hands, mirrorMode = true) {
+    if (hands?.left?.palm && hands.left.palm.visibility > 0.3) {
+      let screenX = hands.left.palm.x * this.scene.getWidth();
+      const screenY = (1 - hands.left.palm.y) * this.scene.getHeight();
+      if (mirrorMode) screenX = this.scene.getWidth() - screenX;
+      this.leftHandPos = { x: screenX, y: screenY };
+    } else {
+      this.leftHandPos = null;
+    }
+
+    if (hands?.right?.palm && hands.right.palm.visibility > 0.3) {
+      let screenX = hands.right.palm.x * this.scene.getWidth();
+      const screenY = (1 - hands.right.palm.y) * this.scene.getHeight();
+      if (mirrorMode) screenX = this.scene.getWidth() - screenX;
+      this.rightHandPos = { x: screenX, y: screenY };
+    } else {
+      this.rightHandPos = null;
+    }
+  }
+
+  // Spawn concentrated orb particles at hands
+  spawnHandOrbs(chargeLevel) {
+    if (chargeLevel <= 0) return;
+
+    const behavior = this.elementBehavior;
+    const orbSize = 30 + chargeLevel * 20; // Orb radius grows with charge
+    const particleCount = 2 + chargeLevel; // More particles at higher charge
+
+    const spawnOrbAt = (pos) => {
+      if (!pos) return;
+
+      for (let i = 0; i < particleCount; i++) {
+        // Spawn particles in a concentrated orb pattern
+        const angle = Math.random() * Math.PI * 2;
+        const radius = Math.random() * orbSize * 0.8;
+
+        // Orbital velocity - particles circle the hand
+        const orbitalSpeed = 80 + chargeLevel * 30;
+        const tangentX = -Math.sin(angle) * orbitalSpeed;
+        const tangentY = Math.cos(angle) * orbitalSpeed;
+
+        // Add element-specific motion
+        let vx = tangentX;
+        let vy = tangentY;
+
+        switch (behavior.particleDirection) {
+          case 'up':
+            vy += 20;
+            break;
+          case 'down':
+            vy -= 20;
+            break;
+          case 'swirl':
+            // Extra spiral motion
+            vx += Math.sin(angle * 3) * 30;
+            vy += Math.cos(angle * 3) * 30;
+            break;
+        }
+
+        this.spawn({
+          x: pos.x + Math.cos(angle) * radius,
+          y: pos.y + Math.sin(angle) * radius,
+          vx: vx * behavior.speed * 0.5,
+          vy: vy * behavior.speed * 0.5,
+          size: this.randomSize() * (0.5 + chargeLevel * 0.15),
+          life: 0.3 + Math.random() * 0.3,
+          type: 'handOrb',
+          colorIndex: Math.random() < 0.7 ? 0 : (Math.random() < 0.5 ? 1 : 2)
+        });
+      }
+    };
+
+    spawnOrbAt(this.leftHandPos);
+    spawnOrbAt(this.rightHandPos);
+  }
+
+  // Spawn particles that fill the body silhouette with flow
+  spawnBodyFill(maskChecker, count = 10, chargeLevel = 1) {
+    if (!maskChecker) return;
+
+    const behavior = this.elementBehavior;
+
+    for (let i = 0; i < count; i++) {
+      const point = maskChecker.getRandomInsidePoint();
+      if (!point) continue;
+
+      const screenX = point.x * this.scene.getWidth();
+      const screenY = (1 - point.y) * this.scene.getHeight();
+
+      // Velocity based on element direction (flowing inside body)
+      let vx = 0, vy = 0;
+      switch (behavior.particleDirection) {
+        case 'up':
+          vy = 40 + Math.random() * 60;
+          vx = (Math.random() - 0.5) * 30;
+          break;
+        case 'down':
+          vy = -(40 + Math.random() * 60);
+          vx = (Math.random() - 0.5) * 30;
+          break;
+        case 'center':
+          vx = (Math.random() - 0.5) * 20;
+          vy = (Math.random() - 0.5) * 20;
+          break;
+        case 'swirl':
+          const angle = Math.random() * Math.PI * 2;
+          const speed = 30 + Math.random() * 40;
+          vx = Math.cos(angle) * speed;
+          vy = Math.sin(angle) * speed;
+          break;
+      }
+
+      this.spawn({
+        x: screenX,
+        y: screenY,
+        vx: vx * behavior.speed,
+        vy: vy * behavior.speed,
+        size: this.randomSize() * (0.4 + chargeLevel * 0.2),
+        life: 0.8 + Math.random() * 0.8,
+        type: 'bodyFill',
+        insideBody: true,
+        colorIndex: Math.random() < 0.6 ? 0 : (Math.random() < 0.7 ? 1 : 2)
+      });
+    }
+  }
+
+  // Check if a screen position is inside the body
+  isInsideBody(screenX, screenY) {
+    if (!this.bodyMask) return false;
+
+    // Convert screen to normalized coordinates
+    const normX = screenX / this.scene.getWidth();
+    const normY = 1 - (screenY / this.scene.getHeight());
+
+    return this.bodyMask.isInsideBody(normX, normY);
+  }
+
   update(deltaTime, bodyCenter = null) {
     const decay = this.elementBehavior?.decay ?? 0.95;
     const posAttr = this.instancedMesh.geometry.getAttribute('instancePosition');
@@ -437,10 +569,56 @@ export class ParticleSystem {
         p.vy += Math.sin(angle) * 30 * deltaTime;
       }
 
+      // Hand orb attraction - particles orbit around nearest hand
+      if (p.type === 'handOrb') {
+        let nearestHand = null;
+        let minDist = Infinity;
+
+        if (this.leftHandPos) {
+          const dx = this.leftHandPos.x - p.x;
+          const dy = this.leftHandPos.y - p.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < minDist) {
+            minDist = dist;
+            nearestHand = this.leftHandPos;
+          }
+        }
+        if (this.rightHandPos) {
+          const dx = this.rightHandPos.x - p.x;
+          const dy = this.rightHandPos.y - p.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < minDist) {
+            minDist = dist;
+            nearestHand = this.rightHandPos;
+          }
+        }
+
+        if (nearestHand && minDist > 5) {
+          // Centripetal force toward hand
+          const dx = nearestHand.x - p.x;
+          const dy = nearestHand.y - p.y;
+          const force = 400 / Math.max(minDist, 30);
+          p.vx += (dx / minDist) * force * deltaTime;
+          p.vy += (dy / minDist) * force * deltaTime;
+        }
+      }
+
       // Update position
       p.x += p.vx * deltaTime;
       p.y += p.vy * deltaTime;
       p.rotation += p.rotationSpeed * deltaTime;
+
+      // Body containment - bounce particles back inside if they leave
+      if (p.insideBody && this.bodyMask) {
+        if (!this.isInsideBody(p.x, p.y)) {
+          // Reflect velocity and push back inside
+          p.vx *= -0.5;
+          p.vy *= -0.5;
+          // Move back
+          p.x -= p.vx * deltaTime * 2;
+          p.y -= p.vy * deltaTime * 2;
+        }
+      }
 
       // Apply decay
       p.vx *= Math.pow(decay, deltaTime * 60);

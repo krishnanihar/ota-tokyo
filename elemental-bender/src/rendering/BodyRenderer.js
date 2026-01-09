@@ -117,53 +117,54 @@ export class BodyRenderer {
             discard;
           }
 
-          // Base silhouette - slightly transparent
-          vec3 color = silhouetteColor;
-          float alpha = opacity * mask;
+          // ENERGY INTENSITY - always visible, scales with charge
+          float baseEnergy = 0.25;
+          float energyIntensity = baseEnergy + chargeLevel * 0.75;
 
-          // DRAMATIC energy effect inside body
-          // Always show some energy even at low charge
-          float baseEnergy = 0.15;
-          float energyIntensity = baseEnergy + chargeLevel * 0.7;
-
-          // Animated flowing energy based on element direction
+          // FLOWING ENERGY - direction-based animation
           float energy = flowingEnergy(vUv, energyDirection, time);
           energy *= energyIntensity;
 
-          // Caustic light effect (dramatic for water, subtle for others)
+          // CAUSTIC for water element
           float causticEffect = caustic(vUv, time);
-          // Boost caustic for water (when direction is down)
           float isWater = step(-0.5, -energyDirection.y);
-          causticEffect = mix(causticEffect * 0.3, causticEffect * 0.8, isWater);
-          energy = mix(energy, energy * causticEffect, 0.5);
+          energy = mix(energy, energy * causticEffect, isWater * 0.5);
 
-          // Pulsing energy waves
-          float pulse = sin(time * 3.0 + vUv.y * 10.0) * 0.5 + 0.5;
-          energy += pulse * energyIntensity * 0.2;
+          // PULSE animation
+          float pulse = sin(time * 2.5 + vUv.y * 6.0) * 0.5 + 0.5;
+          energy += pulse * energyIntensity * 0.12;
 
-          // Strong edge glow effect
-          float edgeOuter = smoothstep(0.2, 0.5, mask);
-          float edgeInner = smoothstep(0.5, 0.8, mask);
-          float edge = edgeOuter - edgeInner;
-          edge = max(edge, 0.0) * (0.3 + chargeLevel * 0.7);
+          // EDGE GLOW - bright rim
+          float edgeOuter = smoothstep(0.1, 0.35, mask);
+          float edgeInner = smoothstep(0.35, 0.6, mask);
+          float edge = max(edgeOuter - edgeInner, 0.0);
+          edge *= (0.5 + chargeLevel * 0.5);
 
-          // Inner core glow
-          float core = smoothstep(0.6, 0.9, mask) * energyIntensity * 0.5;
+          // CORE - brighter inside at high charge
+          float core = smoothstep(0.5, 0.8, mask) * energyIntensity * 0.3;
 
-          // Mix in element color - MORE visible
-          color = mix(color, elementColor, energy * 0.5);
-          color = mix(color, glowColor, edge * 0.7);
-          color += elementColor * core;
+          // COLOR: Dark base with energy veins and glowing edges
+          vec3 color = vec3(0.02, 0.02, 0.03); // Near black base
 
-          // Add vibrant internal glow
-          color += elementColor * energy * 0.4;
-          color += glowColor * edge * 0.3;
+          // Energy veins in element color
+          color += elementColor * energy * 0.7;
 
-          // Boost brightness at high charge
-          if (chargeLevel > 0.5) {
-            float boost = (chargeLevel - 0.5) * 0.4;
-            color += glowColor * boost * pulse;
-          }
+          // Bright edge glow
+          color += glowColor * edge * 1.0;
+
+          // Core glow
+          color += elementColor * core * 0.4;
+
+          // HIGH CHARGE: More energy visible
+          float chargeBoost = max(chargeLevel - 0.3, 0.0) * 0.6;
+          color += glowColor * chargeBoost * pulse;
+
+          // ALPHA: Semi-transparent to show particles through
+          float alpha = opacity * mask;
+          // Slightly more transparent at high charge to see particles
+          alpha *= (1.0 - chargeBoost * 0.2);
+
+          color = clamp(color, 0.0, 1.2); // Allow slight HDR for bloom
 
           gl_FragColor = vec4(color, alpha);
         }
@@ -214,33 +215,38 @@ export class BodyRenderer {
         void main() {
           float mask = texture2D(maskTexture, vUv).r;
 
-          // Create glow from mask edges
+          // Create WIDE glow from mask edges
           float glow = 0.0;
 
-          // Sample nearby pixels for blur/glow effect
-          float blurSize = 0.01;
-          for (float x = -2.0; x <= 2.0; x += 1.0) {
-            for (float y = -2.0; y <= 2.0; y += 1.0) {
+          // Larger blur for more dramatic glow
+          float blurSize = 0.015;
+          for (float x = -3.0; x <= 3.0; x += 1.0) {
+            for (float y = -3.0; y <= 3.0; y += 1.0) {
               vec2 offset = vec2(x, y) * blurSize;
               glow += texture2D(maskTexture, vUv + offset).r;
             }
           }
-          glow /= 25.0;
+          glow /= 49.0;
 
-          // Subtract inner mask to get edge
-          float edge = glow - mask;
-          edge = max(edge, 0.0) * 2.0;
+          // Subtract inner mask to get edge halo
+          float edge = glow - mask * 0.8;
+          edge = max(edge, 0.0) * 2.5;
 
-          // Animate glow
-          float pulse = sin(time * 3.0) * 0.2 + 0.8;
+          // Pulsing glow
+          float pulse = sin(time * 2.0) * 0.15 + 0.85;
 
-          float alpha = edge * glowIntensity * pulse;
+          // Base intensity + charge-based boost
+          float intensity = 0.3 + glowIntensity * 1.5;
+          float alpha = edge * intensity * pulse;
 
-          if (alpha < 0.01) {
+          if (alpha < 0.02) {
             discard;
           }
 
-          gl_FragColor = vec4(glowColor, alpha);
+          // Brighter glow color
+          vec3 brightGlow = glowColor * 1.3;
+
+          gl_FragColor = vec4(brightGlow, alpha);
         }
       `,
       transparent: true,

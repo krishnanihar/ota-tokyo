@@ -202,21 +202,22 @@ export class SceneSetup {
     const renderPass = new RenderPass(this.scene, this.camera);
     this.composer.addPass(renderPass);
 
-    // Trail/afterimage effect - REDUCED for sharper look
+    // Trail/afterimage effect - MINIMAL for cleaner look
     this.afterimagePass = new AfterimagePass();
-    this.afterimagePass.uniforms['damp'].value = 0.75; // Was 0.92, now less ghosting
+    this.afterimagePass.uniforms['damp'].value = 0.4; // Much less ghosting - cleaner trails
     this.composer.addPass(this.afterimagePass);
 
-    // Metaball/threshold shader for organic blob shapes
-    this.metaballPass = new ShaderPass(this.createMetaballShader());
-    this.composer.addPass(this.metaballPass);
+    // METABALL DISABLED - was creating mushy blobs instead of sharp Ukiyo-e style
+    // this.metaballPass = new ShaderPass(this.createMetaballShader());
+    // this.composer.addPass(this.metaballPass);
+    this.metaballPass = null;
 
-    // Bloom - SIGNIFICANTLY REDUCED for Ukiyo-e style
+    // Bloom - SELECTIVE GLOW for energy effects
     this.bloomPass = new UnrealBloomPass(
       new THREE.Vector2(this.width, this.height),
-      0.15,  // strength (was 0.4) - much subtler
-      0.2,   // radius (was 0.3)
-      0.85   // threshold (was 0.9)
+      0.3,   // strength - moderate glow
+      0.4,   // radius - tighter glow
+      0.7    // threshold - only bright areas glow
     );
     this.composer.addPass(this.bloomPass);
 

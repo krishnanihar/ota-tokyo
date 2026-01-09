@@ -10,7 +10,7 @@ export class PoseProcessor {
     this.lastTimestamp = 0;
   }
 
-  process(landmarks, timestamp) {
+  process(landmarks, timestamp, worldLandmarks = null) {
     if (!landmarks || landmarks.length === 0) {
       return null;
     }
@@ -38,11 +38,15 @@ export class PoseProcessor {
     // Get body center for various effects
     const bodyCenter = this.getBodyCenter(pose);
 
+    // Extract 3D world landmarks for point cloud Z-interpolation
+    const worldLandmarks3D = this.extractWorldLandmarks3D(worldLandmarks);
+
     // Store for next frame
     this.previousLandmarks = pose;
 
     return {
       landmarks: pose,
+      worldLandmarks3D,  // 3D coordinates for depth interpolation
       velocity,
       smoothedVelocity: this.getSmoothedVelocity(velocity),
       stillTime: this.stillTime,
@@ -188,5 +192,30 @@ export class PoseProcessor {
     this.previousLandmarks = null;
     this.velocityHistory = [];
     this.stillTime = 0;
+  }
+
+  // Extract 3D world landmarks for depth interpolation in point cloud
+  extractWorldLandmarks3D(worldLandmarks) {
+    if (!worldLandmarks || worldLandmarks.length === 0) {
+      return null;
+    }
+
+    const world = worldLandmarks[0]; // First detected pose
+    if (!world || world.length === 0) {
+      return null;
+    }
+
+    // Return all 33 landmarks with normalized x,y and world z
+    // MediaPipe world landmarks are in meters with origin at hip center
+    return world.map((landmark, index) => ({
+      index,
+      // Normalized coordinates (0-1) for matching with mask
+      x: landmark.x !== undefined ? landmark.x : 0,
+      y: landmark.y !== undefined ? landmark.y : 0,
+      // World Z in meters (depth from camera) - normalized for rendering
+      // Typical range is about -0.5 to 0.5 meters from hip center
+      z: landmark.z !== undefined ? landmark.z : 0,
+      visibility: landmark.visibility !== undefined ? landmark.visibility : 0
+    }));
   }
 }

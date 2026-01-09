@@ -28,14 +28,14 @@ export const CONFIG = {
   TRANSITION_DURATION: 2000,    // 2 second blend between elements
   ELEMENT_ORDER: ['fire', 'water', 'earth', 'air'],
 
-  // Particles - MASSIVE COUNT with smaller sizes
-  MAX_PARTICLES: 25000,
-  INITIAL_PARTICLES: 8000,
-  PARTICLE_POOL_SIZE: 35000,
+  // Particles - FEWER but LARGER for cohesive energy look
+  MAX_PARTICLES: 5000,
+  INITIAL_PARTICLES: 2000,
+  PARTICLE_POOL_SIZE: 8000,
 
   // Body Rendering
-  SILHOUETTE_OPACITY: 0.7,      // 70% opacity for black silhouette
-  GLOW_INTENSITY: 0.8,
+  SILHOUETTE_OPACITY: 0.85,     // 85% opacity - solid but allows particle bleed-through
+  GLOW_INTENSITY: 1.0,          // Full glow intensity
   MASK_THRESHOLD: 0.5,          // Segmentation mask cutoff
 
   // Performance
@@ -63,38 +63,38 @@ export const ElementType = {
   AIR: 'air'
 };
 
-// Color Palettes from Ukiyo-e art references
+// Color Palettes from Ukiyo-e art references - BOOSTED SATURATION
 export const COLORS = {
-  // Fire - Edo Fire Scroll Style
+  // Fire - Edo Fire Scroll Style - VIBRANT
   fire: {
-    primary: '#E34234',       // Vermillion
-    secondary: '#CFB53B',     // Gold Ochre
-    accent: '#1C1C1C',        // Soot Black
-    glow: '#FF6B4A'
+    primary: '#FF4422',       // Bright Vermillion
+    secondary: '#FFD700',     // Vivid Gold
+    accent: '#FF8844',        // Orange flame tips
+    glow: '#FF6633'           // Hot orange glow
   },
 
-  // Water - Hokusai Great Wave Style (more saturated)
+  // Water - Hokusai Great Wave Style - DEEP & VIVID
   water: {
-    primary: '#1a4c7c',       // Deep Prussian Blue (more visible)
-    secondary: '#2d6a9f',     // Mid Blue (wave highlights)
-    accent: '#f0f5ff',        // Foam White (slightly blue tinted)
-    glow: '#5ba3d9'           // Lighter glow for foam edges
+    primary: '#0066CC',       // Vivid Prussian Blue
+    secondary: '#0099FF',     // Bright wave blue
+    accent: '#FFFFFF',        // Pure white foam
+    glow: '#66CCFF'           // Bright cyan glow
   },
 
-  // Earth - Sumi-e Ink Wash Style
+  // Earth - Sumi-e Ink Wash Style - RICHER
   earth: {
-    primary: '#806517',       // Raw Umber
-    secondary: '#8B8378',     // Warm Grey
-    accent: '#8A9A5B',        // Moss Green
-    glow: '#A67C52'
+    primary: '#996622',       // Rich amber/umber
+    secondary: '#CCAA66',     // Warm sand
+    accent: '#669944',        // Vivid moss green
+    glow: '#CC8844'           // Warm amber glow
   },
 
-  // Air - Rinpa Cloud Style
+  // Air - Rinpa Cloud Style - MORE VISIBLE
   air: {
-    primary: '#C0C0C0',       // Silver Mist
-    secondary: '#F0EAD6',     // Cloud White
-    accent: '#EEE8AA',        // Pale Gold
-    glow: '#E8E4D9'
+    primary: '#DDDDFF',       // Pale blue-white
+    secondary: '#FFFFFF',     // Pure white
+    accent: '#FFEEAA',        // Warm gold accent
+    glow: '#EEEEFF'           // Soft white-blue glow
   },
 
   // Universal
@@ -103,16 +103,16 @@ export const COLORS = {
   silhouette: '#000000'       // Pure black for body
 };
 
-// Element Behaviors - SMALL PARTICLES, HIGH COUNT
+// Element Behaviors - LARGER PARTICLES, FEWER COUNT for cohesive energy
 export const ELEMENT_BEHAVIORS = {
   fire: {
     particleDirection: 'up',      // Flows upward inside body
     speed: 1.8,                   // Fast, volatile
     decay: 0.92,                  // Quick burn-out
     trailLength: 1.2,
-    releaseForce: 2.0,            // MORE POWERFUL release
-    particleSize: { min: 2, max: 8 },   // SMALLER particles
-    spawnRate: 30,                // MORE particles
+    releaseForce: 2.0,
+    particleSize: { min: 15, max: 40 },  // LARGER soft glowing particles
+    spawnRate: 8,                 // Fewer particles
     description: 'Fire flows UPWARD inside silhouette'
   },
 
@@ -121,12 +121,12 @@ export const ELEMENT_BEHAVIORS = {
     speed: 1.2,                   // Medium, fluid
     decay: 0.96,                  // Flowing dissipation
     trailLength: 2.0,             // Long silk ribbon trails
-    releaseForce: 1.8,            // MORE POWERFUL release
-    particleSize: { min: 2, max: 10 },  // SMALLER particles
-    spawnRate: 35,                // MORE particles for density
-    ribbonEffect: true,           // Enable ribbon-like particle chains
-    waveAmplitude: 25,            // Hokusai wave curl intensity
-    foamDensity: 0.5,             // More foam particles
+    releaseForce: 1.8,
+    particleSize: { min: 20, max: 50 },  // LARGER flowing particles
+    spawnRate: 10,                // Moderate count for flow
+    ribbonEffect: true,
+    waveAmplitude: 25,
+    foamDensity: 0.5,
     description: 'Water flows DOWNWARD inside silhouette - Hokusai style'
   },
 
@@ -135,9 +135,9 @@ export const ELEMENT_BEHAVIORS = {
     speed: 0.7,                   // Slow, deliberate
     decay: 0.98,                  // Lingers longest
     trailLength: 0.8,
-    releaseForce: 1.5,            // MORE POWERFUL release
-    particleSize: { min: 3, max: 12 },  // SMALLER chunks
-    spawnRate: 20,                // More particles
+    releaseForce: 1.5,
+    particleSize: { min: 25, max: 60 },  // LARGE dense chunks
+    spawnRate: 5,                 // Few heavy particles
     description: 'Dense particles settle toward body core'
   },
 
@@ -146,9 +146,9 @@ export const ELEMENT_BEHAVIORS = {
     speed: 2.5,                   // Instant, weightless
     decay: 0.88,                  // Quick scatter
     trailLength: 2.5,
-    releaseForce: 2.5,            // MORE POWERFUL release
-    particleSize: { min: 1, max: 6 },   // TINY particles
-    spawnRate: 50,                // LOTS of particles swirling
+    releaseForce: 2.5,
+    particleSize: { min: 10, max: 30 },  // Medium soft particles
+    spawnRate: 12,                // Moderate swirling particles
     description: 'Swirling energy, never settles'
   }
 };

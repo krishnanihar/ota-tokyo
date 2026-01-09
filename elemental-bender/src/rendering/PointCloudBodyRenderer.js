@@ -23,6 +23,11 @@ export class PointCloudBodyRenderer {
     this.chargeLevel = ChargeState.NONE;
     this.time = 0;
 
+    // 3D landmarks for Z-depth interpolation
+    this.worldLandmarks3D = null;
+    this.zDepthScale = 50;  // Scale factor for Z displacement
+    this.zNoise = 0.3;      // Random Z variation for organic feel
+
     // Point data arrays (pre-allocated for performance)
     this.positions = null;
     this.colors = null;
@@ -101,6 +106,54 @@ export class PointCloudBodyRenderer {
     this.points.frustumCulled = false;
 
     this.scene.add(this.points);
+  }
+
+  // Update 3D landmarks for Z-depth interpolation
+  updateLandmarks(worldLandmarks3D) {
+    this.worldLandmarks3D = worldLandmarks3D;
+  }
+
+  // Interpolate Z depth from nearest pose landmarks
+  interpolateZ(normalizedX, normalizedY) {
+    if (!this.worldLandmarks3D || this.worldLandmarks3D.length === 0) {
+      return 0;
+    }
+
+    // Find the 3 nearest landmarks and interpolate Z using inverse distance weighting
+    let totalWeight = 0;
+    let weightedZ = 0;
+    const minDist = 0.001; // Minimum distance to avoid division by zero
+
+    // Key body landmarks for interpolation (torso, arms, legs)
+    const keyIndices = [
+      11, 12,  // Shoulders
+      13, 14,  // Elbows
+      15, 16,  // Wrists
+      23, 24,  // Hips
+      25, 26,  // Knees
+      27, 28,  // Ankles
+      0,       // Nose (for head)
+    ];
+
+    for (const idx of keyIndices) {
+      if (idx >= this.worldLandmarks3D.length) continue;
+
+      const landmark = this.worldLandmarks3D[idx];
+      if (!landmark || landmark.visibility < 0.5) continue;
+
+      // Distance in normalized coordinates
+      const dx = normalizedX - landmark.x;
+      const dy = normalizedY - landmark.y;
+      const dist = Math.max(Math.sqrt(dx * dx + dy * dy), minDist);
+
+      // Inverse distance weighting (closer landmarks have more influence)
+      const weight = 1 / (dist * dist);
+      totalWeight += weight;
+      weightedZ += landmark.z * weight;
+    }
+
+    if (totalWeight === 0) return 0;
+    return weightedZ / totalWeight;
   }
 
   updateMask(maskData, width, height) {
@@ -188,11 +241,20 @@ export class PointCloudBodyRenderer {
         const maskValue = data[pixelIndex];
 
         if (maskValue > threshold) {
+          // Normalized coordinates for Z interpolation (0-1)
+          const normX = sampleX / width;
+          const normY = sampleY / height;
+
+          // Interpolate Z depth from pose landmarks
+          const interpolatedZ = this.interpolateZ(normX, normY);
+
           // Position (flip Y for Three.js coordinate system)
           const posIndex = pointIndex * 3;
           this.positions[posIndex] = x + jitterX;
           this.positions[posIndex + 1] = height - (y + jitterY);
-          this.positions[posIndex + 2] = 0;
+          // Apply interpolated Z with scale and slight noise for organic feel
+          const zNoise = (Math.random() - 0.5) * this.zNoise;
+          this.positions[posIndex + 2] = interpolatedZ * this.zDepthScale + zNoise;
 
           // Add drift offset based on element
           const driftAmount = this.time * this.driftSpeed;
