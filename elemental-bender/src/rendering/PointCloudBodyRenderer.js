@@ -13,11 +13,11 @@ export class PointCloudBodyRenderer {
     this.maskCtx = null;
     this.maskTexture = null;
 
-    // Point cloud settings
-    this.sampleSpacing = 4;          // Sample every N pixels (denser)
-    this.maxPoints = 15000;          // Maximum number of points
-    this.pointBaseSize = 6.0;        // Base point size (larger for visibility)
-    this.driftSpeed = 30;            // How fast points drift based on element
+    // Point cloud settings - SMALL DENSE PARTICLES for smooth silhouette
+    this.sampleSpacing = 2;          // Sample every 2 pixels (VERY DENSE)
+    this.maxPoints = 80000;          // Many more points for smooth coverage
+    this.pointBaseSize = 2.5;        // SMALL particles for smooth look
+    this.driftSpeed = 30;            // Moderate drift speed
 
     // Current state
     this.currentElement = 'fire';
@@ -39,9 +39,9 @@ export class PointCloudBodyRenderer {
 
     // Removed hand attraction - particles flow freely based on element
 
-    // Trail effect settings
+    // Trail effect settings - smaller trails for smooth look
     this.trailHistory = [];              // Array of previous position snapshots
-    this.trailLength = 5;                // Number of trail frames to keep
+    this.trailLength = 5;                // Moderate trail length
     this.trailPoints = null;             // Secondary Points object for trails
     this.trailGeometry = null;
     this.trailMaterial = null;
@@ -51,7 +51,7 @@ export class PointCloudBodyRenderer {
 
     // Burst effect state
     this.burstParticles = [];            // Active burst particles
-    this.maxBurstParticles = 2000;       // Max burst particles
+    this.maxBurstParticles = 2000;       // Burst particles
     this.burstGeometry = null;
     this.burstMaterial = null;
     this.burstPoints = null;
@@ -147,7 +147,7 @@ export class PointCloudBodyRenderer {
       this.trailPositions[i * 3] = -1000;
       this.trailPositions[i * 3 + 1] = -1000;
       this.trailPositions[i * 3 + 2] = 4; // Behind main points
-      this.trailSizes[i] = 2;
+      this.trailSizes[i] = 1;
       this.trailColors[i * 3] = 0.5;
       this.trailColors[i * 3 + 1] = 0.2;
       this.trailColors[i * 3 + 2] = 0;
@@ -159,10 +159,10 @@ export class PointCloudBodyRenderer {
     this.trailGeometry.setAttribute('size', new THREE.BufferAttribute(this.trailSizes, 1));
 
     this.trailMaterial = new THREE.PointsMaterial({
-      size: 3,
+      size: 1.5,
       vertexColors: true,
       transparent: true,
-      opacity: 0.4,
+      opacity: 0.3,
       sizeAttenuation: false,
       blending: THREE.AdditiveBlending,
       depthWrite: false
@@ -186,7 +186,7 @@ export class PointCloudBodyRenderer {
       burstPositions[i * 3] = -1000;
       burstPositions[i * 3 + 1] = -1000;
       burstPositions[i * 3 + 2] = 6;
-      burstSizes[i] = 4;
+      burstSizes[i] = 2;
     }
 
     this.burstGeometry = new THREE.BufferGeometry();
@@ -195,10 +195,10 @@ export class PointCloudBodyRenderer {
     this.burstGeometry.setAttribute('size', new THREE.BufferAttribute(burstSizes, 1));
 
     this.burstMaterial = new THREE.PointsMaterial({
-      size: 8,
+      size: 3,
       vertexColors: true,
       transparent: true,
-      opacity: 0.9,
+      opacity: 0.8,
       sizeAttenuation: false,
       blending: THREE.AdditiveBlending,
       depthWrite: false

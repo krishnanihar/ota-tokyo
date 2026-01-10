@@ -50,7 +50,12 @@ export const CONFIG = {
   BG_PARTICLE_SPEED: 20,        // Speed of background particles
 
   // Mirror mode (for installation facing user)
-  MIRROR_MODE: true
+  MIRROR_MODE: true,
+
+  // Camera orientation for non-standard setups
+  // Options: 'normal', 'flip-vertical', 'flip-horizontal', 'rotate-180'
+  // Use 'flip-vertical' when camera is under display pointing up at subject
+  CAMERA_ORIENTATION: 'normal'
 };
 
 // Charge State Enum

@@ -12,6 +12,11 @@ export class MediaPipeSetup {
     this.detectionCount = 0;
     this.lastDetectionLog = 0;
     this.maxPoses = CONFIG.MAX_PEOPLE || 4; // Support up to 4 people
+
+    // Video preprocessing for camera orientation
+    this.preprocessCanvas = null;
+    this.preprocessCtx = null;
+    this.cameraOrientation = CONFIG.CAMERA_ORIENTATION || 'normal';
   }
 
   async initialize(videoElement) {
@@ -47,8 +52,11 @@ export class MediaPipeSetup {
       // Setup webcam
       await this.setupCamera();
 
+      // Setup preprocessing canvas for camera orientation
+      this.setupPreprocessCanvas();
+
       this.isReady = true;
-      console.log('MediaPipe: Initialization complete!');
+      console.log(`MediaPipe: Initialization complete! Camera orientation: ${this.cameraOrientation}`);
       return true;
     } catch (error) {
       console.error('MediaPipe initialization failed:', error);
@@ -83,6 +91,65 @@ export class MediaPipeSetup {
     }
   }
 
+  setupPreprocessCanvas() {
+    // Create offscreen canvas for video preprocessing
+    // This handles camera orientation transforms before MediaPipe detection
+    this.preprocessCanvas = document.createElement('canvas');
+    this.preprocessCanvas.width = this.video.videoWidth || 1280;
+    this.preprocessCanvas.height = this.video.videoHeight || 720;
+    this.preprocessCtx = this.preprocessCanvas.getContext('2d', { willReadFrequently: true });
+
+    console.log(`MediaPipe: Preprocess canvas created ${this.preprocessCanvas.width}x${this.preprocessCanvas.height}`);
+  }
+
+  preprocessVideoFrame() {
+    // Resize canvas if video dimensions changed
+    if (this.preprocessCanvas.width !== this.video.videoWidth ||
+        this.preprocessCanvas.height !== this.video.videoHeight) {
+      this.preprocessCanvas.width = this.video.videoWidth;
+      this.preprocessCanvas.height = this.video.videoHeight;
+    }
+
+    const ctx = this.preprocessCtx;
+    const w = this.preprocessCanvas.width;
+    const h = this.preprocessCanvas.height;
+
+    ctx.save();
+
+    // Apply camera orientation transform
+    switch (this.cameraOrientation) {
+      case 'flip-vertical':
+        // Camera under display pointing UP - flip vertically
+        // This is the key fix for webcam-under-display setups
+        ctx.translate(0, h);
+        ctx.scale(1, -1);
+        break;
+
+      case 'flip-horizontal':
+        // Flip horizontally (mirror)
+        ctx.translate(w, 0);
+        ctx.scale(-1, 1);
+        break;
+
+      case 'rotate-180':
+        // Rotate 180 degrees (both flips)
+        ctx.translate(w, h);
+        ctx.scale(-1, -1);
+        break;
+
+      case 'normal':
+      default:
+        // No transform
+        break;
+    }
+
+    // Draw the video frame with transform applied
+    ctx.drawImage(this.video, 0, 0, w, h);
+    ctx.restore();
+
+    return this.preprocessCanvas;
+  }
+
   detect(timestamp) {
     if (!this.isReady || !this.video || this.video.readyState < 2) {
       return null;
@@ -96,8 +163,14 @@ export class MediaPipeSetup {
     this.lastVideoTime = this.video.currentTime;
 
     try {
-      // Run pose detection
-      this.results = this.poseLandmarker.detectForVideo(this.video, timestamp);
+      // Get input source - use preprocessed canvas if camera needs orientation correction
+      let inputSource = this.video;
+      if (this.cameraOrientation !== 'normal' && this.preprocessCanvas) {
+        inputSource = this.preprocessVideoFrame();
+      }
+
+      // Run pose detection on the (possibly transformed) input
+      this.results = this.poseLandmarker.detectForVideo(inputSource, timestamp);
       this.detectionCount++;
 
       // Log detection info periodically (every 2 seconds)

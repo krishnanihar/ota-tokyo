@@ -117,11 +117,13 @@ export class App {
       this.pointCloudBody.setElement(this.currentElement);
       // Point cloud is now VISIBLE - provides flowing particle body effect
 
-      // Solid body silhouette renderer - PRIMARY body visualization
+      // Solid body silhouette renderer - DISABLED (particles only mode)
       this.bodyRenderer = new BodyRenderer(this.scene);
       this.bodyRenderer.initialize(this.scene.getWidth(), this.scene.getHeight());
       this.bodyRenderer.setElement(this.currentElement);
-      // Body silhouette is now visible - provides solid foundation for energy
+      // Hide the silhouette - only show particles
+      if (this.bodyRenderer.bodyMesh) this.bodyRenderer.bodyMesh.visible = false;
+      if (this.bodyRenderer.glowMesh) this.bodyRenderer.glowMesh.visible = false;
 
       // Initialize hand renderer
       this.handRenderer = new HandRenderer(this.scene);
@@ -608,14 +610,14 @@ export class App {
   }
 
   // Update effect assignment - same effect for all players
-  // Shows both point cloud and silhouette for everyone
+  // PHOTO BOOTH MODE: Only show point cloud particles, no solid silhouette
   updateEffectAssignment() {
     const count = this.detectedPeopleCount;
 
-    // Same effect for all players - show both silhouette and point cloud
-    this.effectAssignmentMode = 'both';
-    if (this.bodyRenderer?.bodyMesh) this.bodyRenderer.bodyMesh.visible = true;
-    if (this.bodyRenderer?.glowMesh) this.bodyRenderer.glowMesh.visible = true;
+    // Particles only mode - hide solid silhouette
+    this.effectAssignmentMode = 'particles';
+    if (this.bodyRenderer?.bodyMesh) this.bodyRenderer.bodyMesh.visible = false;
+    if (this.bodyRenderer?.glowMesh) this.bodyRenderer.glowMesh.visible = false;
     if (this.pointCloudBody?.points) this.pointCloudBody.points.visible = true;
 
     // Update status text
