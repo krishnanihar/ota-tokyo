@@ -8,6 +8,14 @@ export class PoseProcessor {
     this.historyLength = 5; // Smooth over 5 frames
     this.stillTime = 0;
     this.lastTimestamp = 0;
+
+    // Charge accumulation rates
+    this.stillChargeRate = 1.0;       // Full rate when still
+    this.slowMoveChargeRate = 0.6;    // 60% rate when moving slowly
+
+    // Multi-person tracking - track primary person by position continuity
+    this.trackedBodyCenter = null;    // Last known body center position
+    this.trackedPoseIndex = 0;        // Which pose index we're tracking
   }
 
   process(landmarks, timestamp, worldLandmarks = null) {
@@ -15,17 +23,33 @@ export class PoseProcessor {
       return null;
     }
 
-    const pose = landmarks[0]; // First detected pose
+    // Find the best matching pose (closest to our previously tracked position)
+    const poseIndex = this.findBestMatchingPose(landmarks);
+    const pose = landmarks[poseIndex];
     const deltaTime = this.lastTimestamp > 0 ? (timestamp - this.lastTimestamp) / 1000 : 0.016;
     this.lastTimestamp = timestamp;
 
     // Calculate movement velocity
-    const velocity = this.calculateVelocity(pose, deltaTime);
+    let velocity = this.calculateVelocity(pose, deltaTime);
 
-    // Update still time
+    // SANITY CHECK: If velocity is extremely high (> 0.15), it's likely a tracking switch
+    // between people, not actual movement. Ignore this frame's velocity.
+    const maxReasonableVelocity = 0.15;
+    const isTrackingJump = velocity > maxReasonableVelocity;
+    if (isTrackingJump) {
+      velocity = 0; // Treat as no movement - don't disrupt charge
+    }
+
+    // Update still time - accumulates on stillness AND slow movement
+    // Still = full rate, Slow move = 60% rate, Fast move = reset
     if (velocity < CONFIG.STILLNESS_THRESHOLD) {
-      this.stillTime += deltaTime;
-    } else {
+      // Completely still - full charge rate
+      this.stillTime += deltaTime * this.stillChargeRate;
+    } else if (velocity < CONFIG.SLOW_MOVE_THRESHOLD) {
+      // Slow movement - reduced charge rate (still accumulating!)
+      this.stillTime += deltaTime * this.slowMoveChargeRate;
+    } else if (!isTrackingJump) {
+      // Fast movement - reset charge (but NOT if it was a tracking jump)
       this.stillTime = 0;
     }
 
@@ -38,14 +62,21 @@ export class PoseProcessor {
     // Get body center for various effects
     const bodyCenter = this.getBodyCenter(pose);
 
-    // Extract 3D world landmarks for point cloud Z-interpolation
-    const worldLandmarks3D = this.extractWorldLandmarks3D(worldLandmarks);
+    // Update tracked body center for next frame's matching
+    if (bodyCenter) {
+      this.trackedBodyCenter = { x: bodyCenter.x, y: bodyCenter.y };
+    }
+    this.trackedPoseIndex = poseIndex;
+
+    // Extract 3D world landmarks for point cloud Z-interpolation (use matching index)
+    const worldLandmarks3D = this.extractWorldLandmarks3D(worldLandmarks, poseIndex);
 
     // Store for next frame
     this.previousLandmarks = pose;
 
     return {
       landmarks: pose,
+      poseIndex,  // Which person we're tracking (for matching mask)
       worldLandmarks3D,  // 3D coordinates for depth interpolation
       velocity,
       smoothedVelocity: this.getSmoothedVelocity(velocity),
@@ -55,7 +86,8 @@ export class PoseProcessor {
       bodyCenter,
       isStill: velocity < CONFIG.STILLNESS_THRESHOLD,
       isSlowMove: velocity >= CONFIG.STILLNESS_THRESHOLD && velocity < CONFIG.SLOW_MOVE_THRESHOLD,
-      isFastMove: velocity >= CONFIG.FAST_MOVE_THRESHOLD
+      // isFastMove is false during tracking jumps (velocity was set to 0)
+      isFastMove: !isTrackingJump && velocity >= CONFIG.FAST_MOVE_THRESHOLD
     };
   }
 
@@ -192,15 +224,47 @@ export class PoseProcessor {
     this.previousLandmarks = null;
     this.velocityHistory = [];
     this.stillTime = 0;
+    this.trackedBodyCenter = null;
+    this.trackedPoseIndex = 0;
+  }
+
+  // Find the pose closest to our previously tracked position
+  // This prevents flickering when MediaPipe returns people in different order
+  findBestMatchingPose(landmarks) {
+    // If only one person or no previous tracking, use first
+    if (landmarks.length === 1 || !this.trackedBodyCenter) {
+      return 0;
+    }
+
+    let bestIndex = 0;
+    let bestDistance = Infinity;
+
+    for (let i = 0; i < landmarks.length; i++) {
+      const pose = landmarks[i];
+      const center = this.getBodyCenter(pose);
+
+      if (center) {
+        const dx = center.x - this.trackedBodyCenter.x;
+        const dy = center.y - this.trackedBodyCenter.y;
+        const dist = dx * dx + dy * dy;
+
+        if (dist < bestDistance) {
+          bestDistance = dist;
+          bestIndex = i;
+        }
+      }
+    }
+
+    return bestIndex;
   }
 
   // Extract 3D world landmarks for depth interpolation in point cloud
-  extractWorldLandmarks3D(worldLandmarks) {
+  extractWorldLandmarks3D(worldLandmarks, poseIndex = 0) {
     if (!worldLandmarks || worldLandmarks.length === 0) {
       return null;
     }
 
-    const world = worldLandmarks[0]; // First detected pose
+    const world = worldLandmarks[poseIndex] || worldLandmarks[0];
     if (!world || world.length === 0) {
       return null;
     }

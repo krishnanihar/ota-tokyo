@@ -44,7 +44,7 @@ export class AirElement extends ElementBase {
   }
 
   spawnInternalParticles(poseData) {
-    // Air particles swirl constantly inside body, never settle
+    // Air particles move with chaotic wind gusts - NOT circular rotation
     const rate = this.chargeLevel * 4; // Most particles of all elements
 
     for (let i = 0; i < rate; i++) {
@@ -54,15 +54,28 @@ export class AirElement extends ElementBase {
       const screenX = point.x * this.particles.scene.getWidth();
       const screenY = (1 - point.y) * this.particles.scene.getHeight();
 
-      // Swirling motion
-      const swirlAngle = this.swirlPhase + point.x * 10 + point.y * 10;
-      const swirlSpeed = 30 + Math.random() * 20;
+      // Chaotic wind - multiple overlapping noise patterns
+      // NOT circular motion - wind has direction with turbulence
+      const noiseX = point.x * 6 + this.swirlPhase;
+      const noiseY = point.y * 6 + this.swirlPhase * 0.7;
+
+      // Primary wind direction (shifts over time like real wind gusts)
+      const windDir = this.swirlPhase * 0.3;
+      const windStrength = 25 + Math.sin(this.swirlPhase * 2) * 15;
+
+      // Turbulent eddies layered on top
+      const turbX = Math.sin(noiseX * 1.3) * Math.cos(noiseY * 0.9) * 20;
+      const turbY = Math.cos(noiseX * 0.8) * Math.sin(noiseY * 1.5) * 20;
+
+      // Random gusts
+      const gustX = (Math.random() - 0.5) * 30;
+      const gustY = (Math.random() - 0.5) * 25;
 
       this.particles.spawn({
         x: screenX,
         y: screenY,
-        vx: Math.cos(swirlAngle) * swirlSpeed,
-        vy: Math.sin(swirlAngle) * swirlSpeed,
+        vx: Math.cos(windDir) * windStrength + turbX + gustX,
+        vy: Math.sin(windDir) * windStrength * 0.3 + turbY + gustY, // Less vertical, more horizontal wind
         size: this.particles.randomSize() * 0.5, // Smaller, lighter
         life: 0.4 + Math.random() * 0.3, // Quick, ephemeral
         type: 'internal',
@@ -73,7 +86,7 @@ export class AirElement extends ElementBase {
   }
 
   spawnAuraParticles(poseData) {
-    // Air aura: full cyclone forms around body
+    // Air aura: chaotic wind gusts and eddies around body - NOT circular rotation
     const edgePoints = this.mask?.getEdgePoints(50) || [];
     const intensity = (this.chargeLevel - 1) / 3;
 
@@ -85,15 +98,26 @@ export class AirElement extends ElementBase {
       const screenX = point.x * this.particles.scene.getWidth();
       const screenY = (1 - point.y) * this.particles.scene.getHeight();
 
-      // Cyclone motion - circular around body
-      const cycloneAngle = this.swirlPhase + i * 0.3;
-      const cycloneSpeed = 50 + Math.random() * 30;
+      // Wind gust motion - chaotic, NOT circular
+      const noisePhase = this.swirlPhase + point.x * 5 + point.y * 3;
+
+      // Outward push from body with turbulence
+      const outwardX = (point.x - 0.5) * 40;
+      const outwardY = (point.y - 0.5) * 20;
+
+      // Chaotic wind turbulence
+      const turbX = Math.sin(noisePhase * 1.7) * 35 + Math.cos(noisePhase * 2.3) * 20;
+      const turbY = Math.cos(noisePhase * 1.2) * 25 + Math.sin(noisePhase * 0.8) * 15;
+
+      // Random gust direction
+      const gustAngle = Math.random() * Math.PI * 2;
+      const gustStrength = Math.random() * 25;
 
       this.particles.spawn({
-        x: screenX + Math.cos(cycloneAngle) * 20,
-        y: screenY + Math.sin(cycloneAngle) * 20,
-        vx: Math.cos(cycloneAngle + Math.PI / 2) * cycloneSpeed,
-        vy: Math.sin(cycloneAngle + Math.PI / 2) * cycloneSpeed,
+        x: screenX + (Math.random() - 0.5) * 30,
+        y: screenY + (Math.random() - 0.5) * 30,
+        vx: outwardX + turbX + Math.cos(gustAngle) * gustStrength,
+        vy: outwardY + turbY + Math.sin(gustAngle) * gustStrength,
         size: this.particles.randomSize() * 0.4,
         life: 0.3 + Math.random() * 0.2,
         type: 'aura',
@@ -254,10 +278,14 @@ export class AirElement extends ElementBase {
   }
 
   getHandVelocityX() {
-    return Math.cos(this.swirlPhase) * 40; // Fast swirl
+    // Chaotic wind gusts, not circular rotation
+    const turbulence = Math.sin(this.swirlPhase * 1.7) * Math.cos(this.swirlPhase * 0.9);
+    return turbulence * 50 + (Math.random() - 0.5) * 30;
   }
 
   getHandVelocityY() {
-    return Math.sin(this.swirlPhase) * 40; // Fast swirl
+    // Chaotic wind gusts
+    const turbulence = Math.cos(this.swirlPhase * 1.3) * Math.sin(this.swirlPhase * 2.1);
+    return turbulence * 30 + (Math.random() - 0.5) * 25;
   }
 }

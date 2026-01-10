@@ -49,8 +49,9 @@ export class ChargeSystem {
       }
     }
 
-    // Check for release
-    if (this.previousLevel > ChargeState.NONE && !poseData.isStill) {
+    // Check for release - only on FAST movement (not slow movement)
+    // Slow movement still accumulates charge at 60% rate
+    if (this.previousLevel > ChargeState.NONE && poseData.isFastMove) {
       this.triggerRelease(poseData);
     }
 

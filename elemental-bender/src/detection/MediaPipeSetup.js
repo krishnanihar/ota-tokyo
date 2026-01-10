@@ -1,4 +1,4 @@
-// MediaPipe Pose Landmarker Setup
+// MediaPipe Pose Landmarker Setup - Multi-person support
 import { PoseLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
 import { CONFIG } from '../config.js';
 
@@ -11,6 +11,7 @@ export class MediaPipeSetup {
     this.results = null;
     this.detectionCount = 0;
     this.lastDetectionLog = 0;
+    this.maxPoses = CONFIG.MAX_PEOPLE || 4; // Support up to 4 people
   }
 
   async initialize(videoElement) {
@@ -25,21 +26,21 @@ export class MediaPipeSetup {
       );
       console.log('MediaPipe: Vision WASM loaded');
 
-      // Create pose landmarker with segmentation
-      console.log('MediaPipe: Creating pose landmarker...');
+      // Create pose landmarker with segmentation - MULTI-PERSON SUPPORT
+      console.log(`MediaPipe: Creating pose landmarker for ${this.maxPoses} people...`);
       this.poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
         baseOptions: {
           modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',
           delegate: 'GPU'
         },
         runningMode: 'VIDEO',
-        numPoses: 1,
+        numPoses: this.maxPoses, // Track multiple people
         minPoseDetectionConfidence: 0.5,
         minPosePresenceConfidence: 0.5,
         minTrackingConfidence: 0.5,
         outputSegmentationMasks: true
       });
-      console.log('MediaPipe: Pose landmarker created');
+      console.log(`MediaPipe: Pose landmarker created for ${this.maxPoses} people`);
 
       // Setup webcam
       await this.setupCamera();
@@ -96,12 +97,12 @@ export class MediaPipeSetup {
       this.results = this.poseLandmarker.detectForVideo(this.video, timestamp);
       this.detectionCount++;
 
-      // Log detection info periodically (every 60 frames)
+      // Log detection info periodically (every 2 seconds)
       if (timestamp - this.lastDetectionLog > 2000) {
-        const hasLandmarks = this.results?.landmarks?.length > 0;
+        const numPeople = this.results?.landmarks?.length || 0;
         const hasMask = this.results?.segmentationMasks?.length > 0;
         const maskInfo = hasMask ? `${this.results.segmentationMasks[0].width}x${this.results.segmentationMasks[0].height}` : 'none';
-        console.log(`MediaPipe: Detection #${this.detectionCount} - Landmarks: ${hasLandmarks}, Mask: ${maskInfo}`);
+        console.log(`MediaPipe: Detection #${this.detectionCount} - People: ${numPeople}, Mask: ${maskInfo}`);
         this.lastDetectionLog = timestamp;
       }
 

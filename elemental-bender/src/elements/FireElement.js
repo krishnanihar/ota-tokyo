@@ -33,7 +33,7 @@ export class FireElement extends ElementBase {
   }
 
   spawnInternalParticles(poseData) {
-    // Fire particles flow upward inside body
+    // Fire particles flow upward with organic turbulence (not straight up)
     const rate = this.chargeLevel * 3;
 
     for (let i = 0; i < rate; i++) {
@@ -43,14 +43,24 @@ export class FireElement extends ElementBase {
       const screenX = point.x * this.particles.scene.getWidth();
       const screenY = (1 - point.y) * this.particles.scene.getHeight();
 
-      // Upward velocity with flicker
-      const flicker = Math.sin(this.flickerPhase + i) * 10;
+      // Organic turbulent upward flow - like real fire licking upward
+      // Use position-based noise for coherent flow patterns
+      const noiseX = point.x * 5 + this.flickerPhase * 0.5;
+      const noiseY = point.y * 5 + this.flickerPhase * 0.3;
+
+      // Turbulent horizontal drift (like fire flickering side to side)
+      const turbulence = Math.sin(noiseX) * Math.cos(noiseY * 1.7) * 25;
+      const secondaryTurbulence = Math.sin(noiseX * 2.3 + noiseY) * 15;
+
+      // Upward velocity varies by position (hotter core rises faster)
+      const coreDistance = Math.abs(point.x - 0.5) * 2; // 0 at center, 1 at edges
+      const upwardSpeed = 25 + (1 - coreDistance) * 30 + Math.random() * 20;
 
       this.particles.spawn({
         x: screenX,
         y: screenY,
-        vx: flicker + (Math.random() - 0.5) * 15,
-        vy: 40 + Math.random() * 40, // Upward
+        vx: turbulence + secondaryTurbulence + (Math.random() - 0.5) * 10,
+        vy: upwardSpeed, // Organic upward flow
         size: this.particles.randomSize() * 0.6,
         life: 0.5 + Math.random() * 0.5,
         type: 'internal',
@@ -61,7 +71,7 @@ export class FireElement extends ElementBase {
   }
 
   spawnAuraParticles(poseData) {
-    // Fire aura: flame tongues rising around body
+    // Fire aura: organic flame tongues licking upward around body
     const edgePoints = this.mask?.getEdgePoints(40) || [];
     const intensity = (this.chargeLevel - 1) / 3;
 
@@ -76,15 +86,19 @@ export class FireElement extends ElementBase {
       const screenX = point.x * this.particles.scene.getWidth();
       const screenY = (1 - point.y) * this.particles.scene.getHeight();
 
-      // Flame tongue: mostly upward, slight outward spread
-      const outwardX = (point.x - 0.5) * 30;
-      const flicker = Math.sin(this.flickerPhase + i * 0.5) * 15;
+      // Organic flame tongue - uses turbulent noise, not just sin wave
+      const noisePhase = this.flickerPhase + point.x * 8 + point.y * 4;
+      const turbulentFlicker = Math.sin(noisePhase) * Math.cos(noisePhase * 0.7) * 20;
+      const outwardDrift = (point.x - 0.5) * 15; // Gentle outward spread
+
+      // Upward speed with variation (flames are uneven)
+      const upwardBase = 35 + Math.sin(noisePhase * 1.3) * 15;
 
       this.particles.spawn({
-        x: screenX + (Math.random() - 0.5) * 5,
+        x: screenX + (Math.random() - 0.5) * 8,
         y: screenY,
-        vx: outwardX + flicker,
-        vy: 60 + Math.random() * 40, // Strong upward
+        vx: outwardDrift + turbulentFlicker + (Math.random() - 0.5) * 15,
+        vy: upwardBase + Math.random() * 25, // Organic upward
         size: this.particles.randomSize(),
         life: 0.4 + Math.random() * 0.3,
         type: 'aura',

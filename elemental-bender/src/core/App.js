@@ -7,6 +7,7 @@ import { SceneSetup } from '../rendering/SceneSetup.js';
 import { BodyRenderer } from '../rendering/BodyRenderer.js';
 import { PointCloudBodyRenderer } from '../rendering/PointCloudBodyRenderer.js';
 import { HandRenderer } from '../rendering/HandRenderer.js';
+import { HandOrbRenderer } from '../rendering/HandOrbRenderer.js';
 import { ChargeSystem } from '../systems/ChargeSystem.js';
 import { ParticleSystem } from '../systems/ParticleSystem.js';
 import { GPUParticleSystem } from '../systems/GPUParticleSystem.js';
@@ -17,6 +18,7 @@ import { WaterElement } from '../elements/WaterElement.js';
 import { EarthElement } from '../elements/EarthElement.js';
 import { AirElement } from '../elements/AirElement.js';
 import { ProceduralBrushes } from '../assets/ProceduralBrushes.js';
+import { BackgroundEffects } from '../rendering/BackgroundEffects.js';
 
 export class App {
   constructor() {
@@ -28,11 +30,13 @@ export class App {
     this.bodyRenderer = null;
     this.pointCloudBody = null;  // Point cloud silhouette
     this.handRenderer = null;
+    this.handOrbRenderer = null;  // Dramatic element-specific hand orbs
     this.particleSystem = null;
     this.chargeSystem = new ChargeSystem();
     this.cycleSystem = new CycleSystem();
     this.inputManager = new InputManager();
     this.brushes = new ProceduralBrushes();
+    this.backgroundEffects = null;  // Ambient atmospheric particles
 
     // Elements
     this.elements = {};
@@ -62,6 +66,19 @@ export class App {
     // Detection status
     this.isDetecting = false;
     this.framesWithoutDetection = 0;
+
+    // AVATAR state tracking for continuous effects
+    this.isInAvatarState = false;
+
+    // Hand collision state
+    this.handsAreTouching = false;
+    this.handCollisionCooldown = 0;
+
+    // Multi-person effect assignment
+    this.detectedPeopleCount = 0;
+    this.effectAssignmentMode = 'both'; // 'pointCloud', 'silhouette', 'both', 'alternate'
+    this.effectSwitchTimer = 0;
+    this.effectSwitchInterval = 2.0; // Switch every 2 seconds when >2 people
   }
 
   async initialize() {
@@ -93,15 +110,12 @@ export class App {
       // Initialize procedural brushes
       this.brushes.initialize();
 
-      // Point cloud body renderer - DISABLED in favor of solid silhouette
-      // Keeping initialization for potential hybrid mode later
+      // Point cloud body renderer - RE-ENABLED for organic flowing particles
+      // Particles flow from body silhouette toward hand orbs
       this.pointCloudBody = new PointCloudBodyRenderer(this.scene);
       this.pointCloudBody.initialize(this.scene.getWidth(), this.scene.getHeight());
       this.pointCloudBody.setElement(this.currentElement);
-      // Hide point cloud - using solid body silhouette instead
-      if (this.pointCloudBody.points) {
-        this.pointCloudBody.points.visible = false;
-      }
+      // Point cloud is now VISIBLE - provides flowing particle body effect
 
       // Solid body silhouette renderer - PRIMARY body visualization
       this.bodyRenderer = new BodyRenderer(this.scene);
@@ -113,6 +127,11 @@ export class App {
       this.handRenderer = new HandRenderer(this.scene);
       this.handRenderer.initialize();
       this.handRenderer.setElement(this.currentElement);
+
+      // Initialize dramatic hand orb renderer
+      this.handOrbRenderer = new HandOrbRenderer(this.scene);
+      this.handOrbRenderer.initialize();
+      this.handOrbRenderer.setElement(this.currentElement);
 
       // Initialize particle system - try GPU version first, fall back to legacy
       if (this.scene.hasWebGPU()) {
@@ -132,6 +151,11 @@ export class App {
         this.particleSystem.initialize();
       }
       this.particleSystem.setElement(this.currentElement);
+
+      // Initialize ambient background effects (drifting particles behind everything)
+      this.backgroundEffects = new BackgroundEffects(this.scene);
+      this.backgroundEffects.initialize(this.scene.getWidth(), this.scene.getHeight());
+      this.backgroundEffects.setElement(this.currentElement);
 
       // Set body mask reference for particle containment
       if (this.particleSystem.setBodyMask) {
@@ -246,22 +270,32 @@ export class App {
         ? this.poseProcessor.process(detection.landmarks, timestamp, detection.worldLandmarks)
         : null;
 
-      // Update detection status
+      // Update detection status and people count
       if (hasLandmarks) {
         if (!this.isDetecting) {
           this.isDetecting = true;
           this.updateStatus('detecting', 'Tracking active');
         }
         this.framesWithoutDetection = 0;
+
+        // Track number of detected people for effect assignment
+        const newPeopleCount = detection.landmarks.length;
+        if (newPeopleCount !== this.detectedPeopleCount) {
+          this.detectedPeopleCount = newPeopleCount;
+          this.updateEffectAssignment();
+          console.log(`People detected: ${newPeopleCount}, Effect mode: ${this.effectAssignmentMode}`);
+        }
       } else {
         this.framesWithoutDetection++;
         if (this.framesWithoutDetection > 30 && this.isDetecting) {
           this.isDetecting = false;
           this.updateStatus('searching', 'Looking for you...');
+          this.detectedPeopleCount = 0;
         }
       }
 
       // Update segmentation mask
+      // Note: MediaPipe returns ONE combined mask for all detected people
       if (detection.segmentationMasks?.length > 0) {
         const maskData = this.segmentationMask.update(detection.segmentationMasks[0]);
 
@@ -296,6 +330,11 @@ export class App {
             maskWidth,
             maskHeight
           );
+
+          // Update particle body-relative scaling based on detected body size
+          if (this.particleSystem.updateBodyScale) {
+            this.particleSystem.updateBodyScale(this.segmentationMask);
+          }
         }
       }
 
@@ -307,6 +346,11 @@ export class App {
         this.pointCloudBody.setChargeLevel(chargeData.level);
         this.handRenderer.setChargeLevel(chargeData.level);
         this.activeElement?.setChargeLevel(chargeData.level);
+
+        // Update particle charge-based scaling
+        if (this.particleSystem.updateChargeScale) {
+          this.particleSystem.updateChargeScale(chargeData.level);
+        }
 
         // Update particle system with hand positions and spawn body/hand particles
         if (this.particleSystem.updateHandPositions && poseData?.hands) {
@@ -342,9 +386,39 @@ export class App {
 
     // Update renderers
     const time = this.scene.getElapsedTime();
+    const currentChargeLevel = this.chargeSystem.getLevel();
+
+    // Update ambient background effects (drifting particles)
+    this.backgroundEffects?.update(time, deltaTime);
+
     this.bodyRenderer.update(time);
-    this.pointCloudBody.update(time, deltaTime);
-    this.handRenderer.update(time, this.lastPoseData?.hands, this.mirrorMode);
+
+    // Calculate hand screen positions for attraction
+    const handPositions = this.calculateHandPositions(this.lastPoseData?.hands);
+
+    // Update point cloud with hand attraction targets
+    this.pointCloudBody.update(time, deltaTime, handPositions, currentChargeLevel);
+
+    // Hide old HandRenderer when charging - HandOrbRenderer is the main effect
+    // Only show subtle glow when NOT charging
+    if (currentChargeLevel > 0) {
+      this.handRenderer.leftHandMesh.visible = false;
+      this.handRenderer.rightHandMesh.visible = false;
+      this.handRenderer.glowMeshes.forEach(m => m.visible = false);
+    } else {
+      this.handRenderer.update(time, this.lastPoseData?.hands, this.mirrorMode);
+    }
+
+    // Update dramatic hand orb renderer
+    this.handOrbRenderer.update(time, this.lastPoseData?.hands, currentChargeLevel, this.mirrorMode);
+
+    // Check for hand collision and trigger mixing effects
+    this.checkHandCollision(handPositions, currentChargeLevel, time);
+
+    // Continuous AVATAR state effects (animate chromatic aberration)
+    if (this.isInAvatarState) {
+      this.scene.updateAvatarEffects(time);
+    }
 
     // Update active element (spawns particles, etc.)
     this.activeElement?.update(deltaTime, this.lastPoseData);
@@ -433,7 +507,17 @@ export class App {
     // Avatar state special effects
     if (newLevel === ChargeState.AVATAR) {
       console.log('AVATAR STATE ACHIEVED!');
-      // TODO: Trigger screen effects, eye glow, etc.
+      this.isInAvatarState = true;
+      // Trigger screen effects: chromatic aberration, screen shake, boosted bloom
+      this.scene.setAvatarEffects(true, 1.0);
+      // Trigger dramatic burst from hand orbs
+      this.handOrbRenderer.triggerAvatarBurst();
+      // Trigger point cloud burst toward hands
+      this.pointCloudBody.triggerAvatarBurst?.();
+    } else if (oldLevel === ChargeState.AVATAR && newLevel < ChargeState.AVATAR) {
+      // Leaving AVATAR state - disable screen effects
+      this.isInAvatarState = false;
+      this.scene.setAvatarEffects(false);
     }
   }
 
@@ -443,6 +527,17 @@ export class App {
     // Trigger element's fast move effect
     if (this.lastPoseData && releaseData.isFastMove) {
       this.activeElement?.onFastMove(this.lastPoseData, releaseData);
+    }
+
+    // Trigger dissolve effect on point cloud if charge was significant
+    if (releaseData.level >= ChargeState.FORM) {
+      this.pointCloudBody.startDissolve?.();
+    }
+
+    // Turn off AVATAR effects when releasing energy
+    if (this.isInAvatarState) {
+      this.isInAvatarState = false;
+      this.scene.setAvatarEffects(false);
     }
   }
 
@@ -457,7 +552,9 @@ export class App {
     this.bodyRenderer.setElement(elementType);
     this.pointCloudBody.setElement(elementType);
     this.handRenderer.setElement(elementType);
+    this.handOrbRenderer.setElement(elementType);
     this.particleSystem.setElement(elementType);
+    this.backgroundEffects?.setElement(elementType);
 
     // Activate new element
     if (this.elements[elementType]) {
@@ -497,6 +594,119 @@ export class App {
 
     this.bodyRenderer?.onResize(width, height);
     this.pointCloudBody?.onResize(width, height);
+    this.backgroundEffects?.onResize(width, height);
+
+    // Update particle screen-relative scaling
+    if (this.particleSystem?.updateScreenScale) {
+      this.particleSystem.updateScreenScale();
+    }
+  }
+
+  // Update effect assignment - same effect for all players
+  // Shows both point cloud and silhouette for everyone
+  updateEffectAssignment() {
+    const count = this.detectedPeopleCount;
+
+    // Same effect for all players - show both silhouette and point cloud
+    this.effectAssignmentMode = 'both';
+    if (this.bodyRenderer?.bodyMesh) this.bodyRenderer.bodyMesh.visible = true;
+    if (this.bodyRenderer?.glowMesh) this.bodyRenderer.glowMesh.visible = true;
+    if (this.pointCloudBody?.points) this.pointCloudBody.points.visible = true;
+
+    // Update status text
+    this.updateStatus('detecting', `${count} ${count === 1 ? 'person' : 'people'}`);
+  }
+
+  // Calculate screen positions for both hands
+  calculateHandPositions(hands) {
+    const positions = { left: null, right: null };
+
+    if (hands?.left?.palm && hands.left.palm.visibility > 0.3) {
+      let x = hands.left.palm.x * this.scene.getWidth();
+      const y = (1 - hands.left.palm.y) * this.scene.getHeight();
+      if (this.mirrorMode) x = this.scene.getWidth() - x;
+      positions.left = { x, y };
+    }
+
+    if (hands?.right?.palm && hands.right.palm.visibility > 0.3) {
+      let x = hands.right.palm.x * this.scene.getWidth();
+      const y = (1 - hands.right.palm.y) * this.scene.getHeight();
+      if (this.mirrorMode) x = this.scene.getWidth() - x;
+      positions.right = { x, y };
+    }
+
+    return positions;
+  }
+
+  // Check if hands are close enough to trigger mixing effects
+  checkHandCollision(handPositions, chargeLevel, time) {
+    // Reduce cooldown
+    if (this.handCollisionCooldown > 0) {
+      this.handCollisionCooldown -= 0.016; // ~60fps
+    }
+
+    if (!handPositions.left || !handPositions.right) {
+      this.handsAreTouching = false;
+      return;
+    }
+
+    // Calculate distance between hands
+    const dx = handPositions.left.x - handPositions.right.x;
+    const dy = handPositions.left.y - handPositions.right.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    // Collision threshold scales with charge level (larger orbs = larger threshold)
+    const baseThreshold = 80;
+    const chargeBonus = chargeLevel * 30;
+    const collisionThreshold = baseThreshold + chargeBonus;
+
+    const wasTouch = this.handsAreTouching;
+    this.handsAreTouching = distance < collisionThreshold;
+
+    // Trigger mixing effect on collision start
+    if (this.handsAreTouching && !wasTouch && this.handCollisionCooldown <= 0 && chargeLevel > 0) {
+      this.triggerHandMixingEffect(handPositions, chargeLevel, time);
+      this.handCollisionCooldown = 0.3; // 300ms cooldown between triggers
+    }
+
+    // Continuous mixing while touching
+    if (this.handsAreTouching && chargeLevel > 0) {
+      this.updateContinuousMixing(handPositions, chargeLevel, time);
+    }
+  }
+
+  // Trigger dramatic effect when hands first touch
+  triggerHandMixingEffect(handPositions, chargeLevel, time) {
+    console.log('HANDS COLLIDED! Charge level:', chargeLevel);
+
+    // Calculate midpoint
+    const midX = (handPositions.left.x + handPositions.right.x) / 2;
+    const midY = (handPositions.left.y + handPositions.right.y) / 2;
+
+    // Trigger particle burst at collision point
+    if (this.particleSystem.spawnCollisionBurst) {
+      this.particleSystem.spawnCollisionBurst(midX, midY, chargeLevel);
+    }
+
+    // Trigger screen shake proportional to charge
+    this.scene.triggerPowerShake(0.5 + chargeLevel * 0.3);
+
+    // Notify hand orb renderer for visual effect
+    this.handOrbRenderer.onHandsCollide?.(midX, midY, chargeLevel);
+
+    // Point cloud burst from collision point
+    this.pointCloudBody.triggerCollisionBurst?.(midX, midY, chargeLevel);
+  }
+
+  // Continuous mixing effect while hands are touching
+  updateContinuousMixing(handPositions, chargeLevel, time) {
+    const midX = (handPositions.left.x + handPositions.right.x) / 2;
+    const midY = (handPositions.left.y + handPositions.right.y) / 2;
+
+    // Spawn swirling particles at contact point
+    if (this.particleSystem.spawnMixingParticles) {
+      this.particleSystem.spawnMixingParticles(midX, midY, chargeLevel, time);
+    }
   }
 
   dispose() {
@@ -505,7 +715,9 @@ export class App {
     this.bodyRenderer?.dispose();
     this.pointCloudBody?.dispose();
     this.handRenderer?.dispose();
+    this.handOrbRenderer?.dispose();
     this.particleSystem?.dispose();
+    this.backgroundEffects?.dispose();
     this.brushes?.dispose();
     this.scene.dispose();
   }

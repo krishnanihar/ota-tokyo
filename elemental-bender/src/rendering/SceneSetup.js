@@ -44,6 +44,15 @@ export class SceneSetup {
 
     // TSL nodes (WebGPU only)
     this.tsl = null;
+
+    // Screen shake system
+    this.shakeIntensity = 0;
+    this.shakeDuration = 0;
+    this.shakeStartTime = 0;
+    this.originalCameraPos = null;
+
+    // Chromatic aberration pass
+    this.chromaticPass = null;
   }
 
   async initialize(canvasElement) {
@@ -221,11 +230,51 @@ export class SceneSetup {
     );
     this.composer.addPass(this.bloomPass);
 
+    // Chromatic aberration pass - for AVATAR state power effect
+    this.chromaticPass = new ShaderPass(this.createChromaticAberrationShader());
+    this.chromaticPass.uniforms.intensity.value = 0.0; // Disabled by default
+    this.composer.addPass(this.chromaticPass);
+
     // Output pass for proper color space
     const outputPass = new OutputPass();
     this.composer.addPass(outputPass);
 
-    console.log('WebGL post-processing configured with metaball shader');
+    console.log('WebGL post-processing configured with chromatic aberration');
+  }
+
+  createChromaticAberrationShader() {
+    return {
+      uniforms: {
+        tDiffuse: { value: null },
+        intensity: { value: 0.0 },
+        direction: { value: new THREE.Vector2(1.0, 0.5) }
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform float intensity;
+        uniform vec2 direction;
+        varying vec2 vUv;
+
+        void main() {
+          vec2 offset = intensity * normalize(direction) * 0.01;
+
+          // Sample each color channel with offset
+          float r = texture2D(tDiffuse, vUv + offset).r;
+          float g = texture2D(tDiffuse, vUv).g;
+          float b = texture2D(tDiffuse, vUv - offset).b;
+          float a = texture2D(tDiffuse, vUv).a;
+
+          gl_FragColor = vec4(r, g, b, a);
+        }
+      `
+    };
   }
 
   createMetaballShader() {
@@ -369,6 +418,7 @@ export class SceneSetup {
 
   render() {
     this.updateDebugIndicator(this.getElapsedTime());
+    this.updateScreenShake();
 
     if (this.isWebGPU && this.postProcessing) {
       // WebGPU native rendering
@@ -453,6 +503,105 @@ export class SceneSetup {
   // Check if WebGPU is active
   hasWebGPU() {
     return this.isWebGPU;
+  }
+
+  // ===========================================
+  // AVATAR STATE SCREEN EFFECTS
+  // ===========================================
+
+  startScreenShake(intensity, duration) {
+    this.shakeIntensity = intensity;
+    this.shakeDuration = duration;
+    this.shakeStartTime = this.getElapsedTime();
+    this.originalCameraPos = this.camera.position.clone();
+  }
+
+  updateScreenShake() {
+    if (this.shakeIntensity <= 0) return;
+
+    const elapsed = this.getElapsedTime() - this.shakeStartTime;
+
+    if (elapsed > this.shakeDuration) {
+      // Shake finished - restore camera
+      if (this.originalCameraPos) {
+        this.camera.position.copy(this.originalCameraPos);
+      }
+      this.shakeIntensity = 0;
+      return;
+    }
+
+    // Decay shake over duration
+    const decay = 1 - (elapsed / this.shakeDuration);
+
+    // Random offset based on intensity
+    const offsetX = (Math.random() - 0.5) * this.shakeIntensity * decay * this.width * 0.5;
+    const offsetY = (Math.random() - 0.5) * this.shakeIntensity * decay * this.height * 0.5;
+
+    // Apply shake offset to camera
+    if (this.originalCameraPos) {
+      this.camera.position.x = this.originalCameraPos.x + offsetX;
+      this.camera.position.y = this.originalCameraPos.y + offsetY;
+    }
+  }
+
+  setAvatarEffects(active, intensity = 1.0) {
+    // Unified control for all AVATAR state effects
+
+    // Chromatic aberration
+    if (this.chromaticPass) {
+      this.chromaticPass.uniforms.intensity.value = active ? 0.8 * intensity : 0;
+
+      // Vary direction for more dynamic effect
+      if (active) {
+        const time = this.getElapsedTime();
+        this.chromaticPass.uniforms.direction.value.set(
+          Math.sin(time * 2) * 0.5 + 1.0,
+          Math.cos(time * 1.5) * 0.3 + 0.5
+        );
+      }
+    }
+
+    // Boost bloom during AVATAR state
+    if (this.bloomPass) {
+      this.bloomPass.strength = active ? 0.5 + intensity * 0.4 : 0.3;
+    }
+
+    // Trigger screen shake (subtle continuous shake at AVATAR)
+    if (active && this.shakeIntensity <= 0) {
+      this.startScreenShake(0.015 * intensity, 0.15);
+    }
+  }
+
+  // Trigger a powerful shake (for burst releases)
+  triggerPowerShake(intensity = 1.0) {
+    this.startScreenShake(0.04 * intensity, 0.3);
+  }
+
+  // Continuous AVATAR effect animation (called every frame while in AVATAR state)
+  updateAvatarEffects(time) {
+    // Animate chromatic aberration direction for dynamic pulsing effect
+    if (this.chromaticPass) {
+      // Pulsing intensity
+      const pulseIntensity = 0.6 + Math.sin(time * 4) * 0.3;
+      this.chromaticPass.uniforms.intensity.value = pulseIntensity;
+
+      // Rotating direction creates swirling color fringe
+      this.chromaticPass.uniforms.direction.value.set(
+        Math.sin(time * 2) * 0.8 + 0.5,
+        Math.cos(time * 1.7) * 0.6 + 0.3
+      );
+    }
+
+    // Pulsing bloom
+    if (this.bloomPass) {
+      const bloomPulse = 0.6 + Math.sin(time * 3) * 0.15;
+      this.bloomPass.strength = bloomPulse;
+    }
+
+    // Subtle continuous screen shake
+    if (this.shakeIntensity <= 0) {
+      this.startScreenShake(0.008, 0.1);
+    }
   }
 
   dispose() {

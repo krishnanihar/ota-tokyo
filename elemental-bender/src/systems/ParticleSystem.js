@@ -29,12 +29,73 @@ export class ParticleSystem {
     // Hand positions for orb spawning
     this.leftHandPos = null;
     this.rightHandPos = null;
+
+    // Dynamic scaling factors
+    this.screenScale = 1.0;           // Based on screen resolution
+    this.bodyScale = 1.0;             // Based on detected body size
+    this.chargeScale = 1.0;           // Based on charge level
+    this.referenceResolution = { width: 1920, height: 1080 };
+    this.referenceBodySize = 0.3;     // Expected body coverage (30% of screen)
   }
 
   initialize() {
     this.createParticlePool();
     this.createInstancedMesh();
     this.setElement(this.currentElement);
+    this.updateScreenScale();
+  }
+
+  // Update screen scale based on current resolution
+  updateScreenScale() {
+    const width = this.scene.getWidth();
+    const height = this.scene.getHeight();
+    // Scale relative to reference resolution (average of width/height ratios)
+    const widthRatio = width / this.referenceResolution.width;
+    const heightRatio = height / this.referenceResolution.height;
+    this.screenScale = (widthRatio + heightRatio) / 2;
+    // Clamp to reasonable range
+    this.screenScale = Math.max(0.5, Math.min(2.0, this.screenScale));
+  }
+
+  // Update body scale based on detected body size in mask
+  updateBodyScale(maskChecker) {
+    if (!maskChecker || !maskChecker.maskData) {
+      this.bodyScale = 1.0;
+      return;
+    }
+
+    // Calculate body coverage as percentage of screen
+    const maskData = maskChecker.maskData;
+    const threshold = CONFIG.MASK_THRESHOLD;
+    let bodyPixels = 0;
+
+    for (let i = 0; i < maskData.length; i++) {
+      if (maskData[i] > threshold) bodyPixels++;
+    }
+
+    const totalPixels = maskData.length;
+    const bodyCoverage = bodyPixels / totalPixels;
+
+    // Scale relative to reference body size
+    // Larger body (closer user) = larger scale, smaller body (farther user) = smaller scale
+    if (bodyCoverage > 0.01) { // Only update if body detected
+      const rawScale = bodyCoverage / this.referenceBodySize;
+      // Smooth scaling with limits (0.5x to 1.5x)
+      this.bodyScale = Math.max(0.5, Math.min(1.5, Math.sqrt(rawScale)));
+    }
+  }
+
+  // Update charge-based scaling
+  updateChargeScale(chargeLevel) {
+    // chargeLevel is 0-4 (NONE to AVATAR)
+    // Scale from 1.0 (no charge) to 1.4 (max charge)
+    const normalizedCharge = chargeLevel / 4;
+    this.chargeScale = 1.0 + normalizedCharge * 0.4;
+  }
+
+  // Get combined dynamic scale factor
+  getDynamicScale() {
+    return this.screenScale * this.bodyScale * this.chargeScale;
   }
 
   createParticlePool() {
@@ -377,8 +438,10 @@ export class ParticleSystem {
 
   randomSize() {
     const behavior = this.elementBehavior || ELEMENT_BEHAVIORS.fire;
-    return behavior.particleSize.min +
+    const baseSize = behavior.particleSize.min +
            Math.random() * (behavior.particleSize.max - behavior.particleSize.min);
+    // Apply dynamic scaling
+    return baseSize * this.getDynamicScale();
   }
 
   // Set body mask reference for containment checking
@@ -407,52 +470,51 @@ export class ParticleSystem {
     }
   }
 
-  // Spawn concentrated orb particles at hands
+  // Spawn accent sparkle particles at hands
+  // REDUCED: Main dramatic effect is now in HandOrbRenderer
   spawnHandOrbs(chargeLevel) {
     if (chargeLevel <= 0) return;
 
     const behavior = this.elementBehavior;
-    const orbSize = 30 + chargeLevel * 20; // Orb radius grows with charge
-    const particleCount = 2 + chargeLevel; // More particles at higher charge
+    const orbSize = 40 + chargeLevel * 15;
+    // Reduced particle count - just accent sparkles now
+    const particleCount = 1 + Math.floor(chargeLevel * 0.5);
 
     const spawnOrbAt = (pos) => {
       if (!pos) return;
 
       for (let i = 0; i < particleCount; i++) {
-        // Spawn particles in a concentrated orb pattern
         const angle = Math.random() * Math.PI * 2;
-        const radius = Math.random() * orbSize * 0.8;
+        const radius = Math.random() * orbSize * 0.6;
 
         // Orbital velocity - particles circle the hand
-        const orbitalSpeed = 80 + chargeLevel * 30;
+        const orbitalSpeed = 60 + chargeLevel * 20;
         const tangentX = -Math.sin(angle) * orbitalSpeed;
         const tangentY = Math.cos(angle) * orbitalSpeed;
 
-        // Add element-specific motion
         let vx = tangentX;
         let vy = tangentY;
 
         switch (behavior.particleDirection) {
           case 'up':
-            vy += 20;
+            vy += 15;
             break;
           case 'down':
-            vy -= 20;
+            vy -= 15;
             break;
           case 'swirl':
-            // Extra spiral motion
-            vx += Math.sin(angle * 3) * 30;
-            vy += Math.cos(angle * 3) * 30;
+            vx += Math.sin(angle * 3) * 20;
+            vy += Math.cos(angle * 3) * 20;
             break;
         }
 
         this.spawn({
           x: pos.x + Math.cos(angle) * radius,
           y: pos.y + Math.sin(angle) * radius,
-          vx: vx * behavior.speed * 0.5,
-          vy: vy * behavior.speed * 0.5,
-          size: this.randomSize() * (0.5 + chargeLevel * 0.15),
-          life: 0.3 + Math.random() * 0.3,
+          vx: vx * behavior.speed * 0.4,
+          vy: vy * behavior.speed * 0.4,
+          size: this.randomSize() * 0.3, // Smaller accent particles
+          life: 0.2 + Math.random() * 0.2,
           type: 'handOrb',
           colorIndex: Math.random() < 0.7 ? 0 : (Math.random() < 0.5 ? 1 : 2)
         });
@@ -522,6 +584,98 @@ export class ParticleSystem {
     const normY = 1 - (screenY / this.scene.getHeight());
 
     return this.bodyMask.isInsideBody(normX, normY);
+  }
+
+  // Spawn dramatic burst when hands collide
+  spawnCollisionBurst(x, y, chargeLevel) {
+    const behavior = this.elementBehavior;
+    const burstCount = 80 + chargeLevel * 60;
+
+    console.log(`ParticleSystem: Spawning collision burst at (${x}, ${y}) with ${burstCount} particles`);
+
+    for (let i = 0; i < burstCount; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 150 + Math.random() * 350 + chargeLevel * 50;
+
+      // Ring-like burst pattern
+      const ringAngle = (i / burstCount) * Math.PI * 2;
+      const ringSpeed = 200 + Math.random() * 200;
+
+      this.spawn({
+        x: x + (Math.random() - 0.5) * 30,
+        y: y + (Math.random() - 0.5) * 30,
+        vx: Math.cos(i < burstCount / 2 ? angle : ringAngle) * (i < burstCount / 2 ? speed : ringSpeed),
+        vy: Math.sin(i < burstCount / 2 ? angle : ringAngle) * (i < burstCount / 2 ? speed : ringSpeed),
+        size: this.randomSize() * (1.2 + chargeLevel * 0.3),
+        life: 0.6 + Math.random() * 0.8,
+        type: 'collision',
+        colorIndex: Math.floor(Math.random() * 3),
+        alpha: 0.9
+      });
+    }
+
+    // Add shockwave ring particles
+    const ringCount = 40;
+    for (let i = 0; i < ringCount; i++) {
+      const angle = (i / ringCount) * Math.PI * 2;
+      const ringSpeed = 300 + chargeLevel * 100;
+
+      this.spawn({
+        x: x,
+        y: y,
+        vx: Math.cos(angle) * ringSpeed,
+        vy: Math.sin(angle) * ringSpeed,
+        size: this.randomSize() * 1.5,
+        life: 0.4,
+        type: 'shockwave',
+        colorIndex: 2, // Accent/glow color
+        alpha: 1.0
+      });
+    }
+  }
+
+  // Spawn continuous mixing particles when hands are close
+  spawnMixingParticles(x, y, chargeLevel, time) {
+    const behavior = this.elementBehavior;
+    const count = 5 + chargeLevel * 3;
+
+    // Swirling vortex particles between hands
+    for (let i = 0; i < count; i++) {
+      const angle = time * 3 + (i / count) * Math.PI * 2;
+      const radius = 20 + Math.random() * 40;
+
+      // Spiral inward/outward motion
+      const spiralSpeed = 80 + Math.random() * 60;
+      const spiralDir = Math.sin(time * 2 + i) > 0 ? 1 : -1;
+
+      this.spawn({
+        x: x + Math.cos(angle) * radius,
+        y: y + Math.sin(angle) * radius,
+        vx: Math.cos(angle + Math.PI / 2) * spiralSpeed * spiralDir + (Math.random() - 0.5) * 30,
+        vy: Math.sin(angle + Math.PI / 2) * spiralSpeed * spiralDir + (Math.random() - 0.5) * 30,
+        size: this.randomSize() * (0.6 + chargeLevel * 0.2),
+        life: 0.3 + Math.random() * 0.3,
+        type: 'mixing',
+        colorIndex: Math.floor(Math.random() * 3),
+        alpha: 0.7 + Math.random() * 0.3
+      });
+    }
+
+    // Central glow particles
+    const glowCount = 2 + chargeLevel;
+    for (let i = 0; i < glowCount; i++) {
+      this.spawn({
+        x: x + (Math.random() - 0.5) * 20,
+        y: y + (Math.random() - 0.5) * 20,
+        vx: (Math.random() - 0.5) * 40,
+        vy: (Math.random() - 0.5) * 40,
+        size: this.randomSize() * 0.8,
+        life: 0.15 + Math.random() * 0.15,
+        type: 'mixing',
+        colorIndex: 2, // Glow color
+        alpha: 0.9
+      });
+    }
   }
 
   update(deltaTime, bodyCenter = null) {

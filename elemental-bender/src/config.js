@@ -14,13 +14,13 @@ export const CONFIG = {
   // Key joints for velocity calculation (MediaPipe landmark indices)
   KEY_JOINTS: [0, 11, 12, 15, 16, 23, 24], // nose, shoulders, wrists, hips
 
-  // Charge System Timings (seconds)
+  // Charge System Timings (seconds) - Fast 4-second power-up
   CHARGE_LEVELS: {
     NONE: { min: 0, max: 0 },
-    SPARK: { min: 0, max: 2 },    // Level 1
-    FORM: { min: 2, max: 5 },     // Level 2
-    POWER: { min: 5, max: 8 },    // Level 3
-    AVATAR: { min: 8, max: Infinity } // Level 4
+    SPARK: { min: 0, max: 1 },      // Level 1: 0-1s
+    FORM: { min: 1, max: 2.5 },     // Level 2: 1-2.5s
+    POWER: { min: 2.5, max: 4 },    // Level 3: 2.5-4s
+    AVATAR: { min: 4, max: Infinity } // Level 4: 4s+
   },
 
   // Element Cycle
@@ -41,6 +41,13 @@ export const CONFIG = {
   // Performance
   MEDIAPIPE_FPS: 30,            // Can throttle detection if needed
   LATENCY_TARGET_MS: 100,
+
+  // Multi-person support
+  MAX_PEOPLE: 4,                // Maximum number of people to track
+
+  // Background effects
+  BG_PARTICLE_COUNT: 100,       // Ambient floating particles
+  BG_PARTICLE_SPEED: 20,        // Speed of background particles
 
   // Mirror mode (for installation facing user)
   MIRROR_MODE: true

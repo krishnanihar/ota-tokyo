@@ -212,7 +212,8 @@ export class ElementBase {
   }
 
   spawnHandParticles(poseData) {
-    // Spawn LOTS of small particles at hands
+    // Spawn accent particles at hands
+    // REDUCED: Main dramatic effect is now in HandOrbRenderer
     ['left', 'right'].forEach(side => {
       const hand = poseData.hands?.[side];
       if (!hand?.palm || hand.palm.visibility < 0.3) return;
@@ -220,20 +221,19 @@ export class ElementBase {
       const screenX = hand.palm.x * this.particles.scene.getWidth();
       const screenY = (1 - hand.palm.y) * this.particles.scene.getHeight();
 
-      // MANY small hand particles
-      const baseCount = 12;
-      // MORE at higher charge
-      const chargeCount = this.chargeLevel * 15;
+      // Reduced count - orbs are the main effect now
+      const baseCount = 3;
+      const chargeCount = this.chargeLevel * 3;
       const totalCount = baseCount + chargeCount;
 
       for (let i = 0; i < totalCount; i++) {
         this.particles.spawn({
-          x: screenX + (Math.random() - 0.5) * 50,
-          y: screenY + (Math.random() - 0.5) * 50,
-          vx: this.getHandVelocityX() * 2,
-          vy: this.getHandVelocityY() * 2,
-          size: 3 + Math.random() * 7 + this.chargeLevel * 1.5, // SMALLER
-          life: 0.4 + Math.random() * 0.4 + this.chargeLevel * 0.1,
+          x: screenX + (Math.random() - 0.5) * 40,
+          y: screenY + (Math.random() - 0.5) * 40,
+          vx: this.getHandVelocityX() * 1.5,
+          vy: this.getHandVelocityY() * 1.5,
+          size: 2 + Math.random() * 5 + this.chargeLevel * 0.5,
+          life: 0.3 + Math.random() * 0.3,
           type: 'hand',
           colorIndex: Math.random() < 0.7 ? 0 : 1
         });
