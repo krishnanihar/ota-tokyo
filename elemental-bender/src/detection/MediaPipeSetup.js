@@ -20,17 +20,17 @@ export class MediaPipeSetup {
     console.log('MediaPipe: Loading vision tasks...');
 
     try {
-      // Load MediaPipe vision tasks
+      // Load MediaPipe vision tasks - use local files for offline support
       const vision = await FilesetResolver.forVisionTasks(
-        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
+        '/mediapipe'  // Local path in public folder
       );
-      console.log('MediaPipe: Vision WASM loaded');
+      console.log('MediaPipe: Vision WASM loaded (offline)');
 
       // Create pose landmarker with segmentation - MULTI-PERSON SUPPORT
       console.log(`MediaPipe: Creating pose landmarker for ${this.maxPoses} people...`);
       this.poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
         baseOptions: {
-          modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',
+          modelAssetPath: '/mediapipe/pose_landmarker_lite.task',  // Local model
           delegate: 'GPU'
         },
         runningMode: 'VIDEO',

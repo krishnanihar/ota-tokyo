@@ -448,6 +448,9 @@ export class PointCloudBodyRenderer {
     this.currentElement = elementType;
     const colors = COLORS[elementType];
 
+    // Clear all persistent effects when changing elements
+    this.clearAllEffects();
+
     if (this.material?.uniforms) {
       this.material.uniforms.elementColor.value.set(colors.primary);
       this.material.uniforms.glowColor.value.set(colors.glow);
@@ -461,6 +464,24 @@ export class PointCloudBodyRenderer {
       air: 4       // Very dense, misty
     };
     this.sampleSpacing = densityMap[elementType] || 6;
+  }
+
+  // Clear all burst particles and trails
+  clearAllEffects() {
+    // Clear burst particles
+    this.burstParticles = [];
+    if (this.burstGeometry) {
+      this.burstGeometry.setDrawRange(0, 0);
+    }
+
+    // Clear trails
+    this.trailHistory = [];
+    if (this.trailGeometry) {
+      this.trailGeometry.setDrawRange(0, 0);
+    }
+
+    // Reset dissolve state
+    this.isDissolving = false;
   }
 
   setChargeLevel(level) {

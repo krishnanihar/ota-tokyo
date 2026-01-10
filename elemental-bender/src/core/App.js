@@ -550,6 +550,9 @@ export class App {
     // Clear existing particles for smooth transition
     this.particleSystem.clear();
 
+    // Clear afterimage buffer to prevent color ghosting from previous element
+    this.scene.clearAfterimage();
+
     this.currentElement = elementType;
     this.bodyRenderer.setElement(elementType);
     this.pointCloudBody.setElement(elementType);

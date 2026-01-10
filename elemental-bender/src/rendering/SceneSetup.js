@@ -211,9 +211,9 @@ export class SceneSetup {
     const renderPass = new RenderPass(this.scene, this.camera);
     this.composer.addPass(renderPass);
 
-    // Trail/afterimage effect - MINIMAL for cleaner look
+    // Trail/afterimage effect - VERY LOW for responsive silhouette
     this.afterimagePass = new AfterimagePass();
-    this.afterimagePass.uniforms['damp'].value = 0.4; // Much less ghosting - cleaner trails
+    this.afterimagePass.uniforms['damp'].value = 0.12; // Minimal ghosting - silhouette updates dynamically
     this.composer.addPass(this.afterimagePass);
 
     // METABALL DISABLED - was creating mushy blobs instead of sharp Ukiyo-e style
@@ -383,6 +383,22 @@ export class SceneSetup {
     this.trailIntensity = Math.max(0, Math.min(1, intensity));
     if (this.afterimagePass) {
       this.afterimagePass.uniforms['damp'].value = this.trailIntensity;
+    }
+  }
+
+  // Clear afterimage buffer - call on element change to prevent color ghosting
+  clearAfterimage() {
+    if (this.afterimagePass) {
+      // Temporarily set damp to 0 to flush the buffer over next few frames
+      const originalDamp = this.afterimagePass.uniforms['damp'].value;
+      this.afterimagePass.uniforms['damp'].value = 0;
+
+      // Restore after a short delay
+      setTimeout(() => {
+        if (this.afterimagePass) {
+          this.afterimagePass.uniforms['damp'].value = originalDamp;
+        }
+      }, 100); // 100ms = ~6 frames at 60fps
     }
   }
 
