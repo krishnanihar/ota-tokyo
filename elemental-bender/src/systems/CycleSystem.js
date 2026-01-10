@@ -9,6 +9,7 @@ export class CycleSystem {
     this.isTransitioning = false;
     this.transitionProgress = 0;
     this.isEnabled = true;
+    this.lastUpdateTime = null; // Track time ourselves
 
     // Callbacks
     this.onElementChange = null;
@@ -18,9 +19,30 @@ export class CycleSystem {
   }
 
   update(deltaTime) {
-    if (!this.isEnabled) return;
+    if (!this.isEnabled) {
+      return;
+    }
 
-    this.timer += deltaTime * 1000; // Convert to milliseconds
+    // Use our own time tracking instead of relying on deltaTime
+    const now = performance.now();
+    if (this.lastUpdateTime === null) {
+      this.lastUpdateTime = now;
+      console.log('[CYCLE] Started - will switch every ' + (CONFIG.ELEMENT_DURATION / 1000) + 's');
+      return;
+    }
+
+    const elapsed = now - this.lastUpdateTime;
+    this.lastUpdateTime = now;
+
+    this.timer += elapsed; // Already in milliseconds
+
+    // Debug: log timer every 5 seconds
+    const interval = 5000;
+    const prevInterval = Math.floor((this.timer - elapsed) / interval);
+    const currInterval = Math.floor(this.timer / interval);
+    if (currInterval !== prevInterval) {
+      console.log('[CYCLE] ' + Math.floor(this.timer / 1000) + 's / ' + (CONFIG.ELEMENT_DURATION / 1000) + 's - ' + this.getCurrentElement());
+    }
 
     // Check for transition start
     const transitionStart = CONFIG.ELEMENT_DURATION - CONFIG.TRANSITION_DURATION;
@@ -70,15 +92,18 @@ export class CycleSystem {
     this.isTransitioning = false;
     this.transitionProgress = 0;
 
+    console.log(`=== ELEMENT TRANSITION: ${previousElement} -> ${this.getCurrentElement()} ===`);
+
     if (this.onTransitionEnd) {
       this.onTransitionEnd(previousElement, this.getCurrentElement());
     }
 
     if (this.onElementChange) {
+      console.log('Calling onElementChange callback...');
       this.onElementChange(this.getCurrentElement(), previousElement);
+    } else {
+      console.warn('WARNING: onElementChange callback not set!');
     }
-
-    console.log(`Element changed to: ${this.getCurrentElement()}`);
   }
 
   getCurrentElement() {

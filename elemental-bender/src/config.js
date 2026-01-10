@@ -24,7 +24,7 @@ export const CONFIG = {
   },
 
   // Element Cycle
-  ELEMENT_DURATION: 10000,      // 10 seconds per element (faster for testing)
+  ELEMENT_DURATION: 15000,      // 15 seconds per element
   TRANSITION_DURATION: 2000,    // 2 second blend between elements
   ELEMENT_ORDER: ['fire', 'water', 'earth', 'air'],
 

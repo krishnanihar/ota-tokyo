@@ -231,8 +231,10 @@ export class App {
 
     // Cycle system events
     this.cycleSystem.onElementChange = (newElement, oldElement) => {
+      console.log(`CycleSystem callback: changing element ${oldElement} -> ${newElement}`);
       this.setElement(newElement);
     };
+    console.log('CycleSystem callbacks registered');
 
     this.cycleSystem.onTransitionStart = (fromElement, toElement) => {
       console.log(`Transition starting: ${fromElement} -> ${toElement}`);
