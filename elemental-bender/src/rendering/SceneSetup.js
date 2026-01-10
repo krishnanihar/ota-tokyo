@@ -105,7 +105,7 @@ export class SceneSetup {
 
     // Create scene
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(COLORS.background);
+    this.scene.background = null; // Transparent - CSS gradient shows through
 
     // Create orthographic camera for 2D rendering
     this.camera = new THREE.OrthographicCamera(
@@ -118,7 +118,8 @@ export class SceneSetup {
     // Create WebGPU renderer
     this.renderer = new THREE.WebGPURenderer({
       canvas: this.canvas,
-      antialias: true
+      antialias: true,
+      alpha: true // Allow transparency
     });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(this.width, this.height);
@@ -139,7 +140,6 @@ export class SceneSetup {
 
     // Create scene
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(COLORS.background);
 
     // Create orthographic camera for 2D rendering
     this.camera = new THREE.OrthographicCamera(
@@ -152,11 +152,13 @@ export class SceneSetup {
     // Create WebGL2 renderer
     this.renderer = new THREE.WebGLRenderer({
       canvas: this.canvas,
-      antialias: true,
-      alpha: false
+      antialias: true
     });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(this.width, this.height);
+
+    // Create gradient background (Ota Tokyo style - deep blue/purple to lighter purple)
+    this.createGradientBackground();
 
     // Setup WebGL post-processing with EffectComposer
     await this.setupWebGLPostProcessing();
@@ -430,6 +432,13 @@ export class SceneSetup {
     if (this.debugMesh) {
       this.debugMesh.position.y = this.height - 30;
     }
+
+    // Update gradient background
+    if (this.gradientMesh) {
+      this.gradientMesh.geometry.dispose();
+      this.gradientMesh.geometry = new THREE.PlaneGeometry(this.width, this.height);
+      this.gradientMesh.position.set(this.width / 2, this.height / 2, -900);
+    }
   }
 
   render() {
@@ -620,12 +629,71 @@ export class SceneSetup {
     }
   }
 
+  // ===========================================
+  // GRADIENT BACKGROUND
+  // ===========================================
+
+  createGradientBackground() {
+    // Ota Tokyo style gradient - deep blue/purple at bottom to lighter purple at top
+    const geometry = new THREE.PlaneGeometry(this.width, this.height);
+
+    const material = new THREE.ShaderMaterial({
+      uniforms: {
+        // Colors from bottom to top
+        colorBottom: { value: new THREE.Color(0x0f0c29) },  // Deep blue/purple
+        colorMiddle: { value: new THREE.Color(0x302b63) },  // Mid purple
+        colorTop: { value: new THREE.Color(0x24243e) }      // Lighter purple
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 colorBottom;
+        uniform vec3 colorMiddle;
+        uniform vec3 colorTop;
+        varying vec2 vUv;
+
+        void main() {
+          // Two-stage gradient: bottom->middle->top
+          vec3 color;
+          if (vUv.y < 0.5) {
+            // Bottom half: deep blue to mid purple
+            color = mix(colorBottom, colorMiddle, vUv.y * 2.0);
+          } else {
+            // Top half: mid purple to lighter purple
+            color = mix(colorMiddle, colorTop, (vUv.y - 0.5) * 2.0);
+          }
+
+          gl_FragColor = vec4(color, 1.0);
+        }
+      `,
+      depthWrite: false,
+      depthTest: false
+    });
+
+    this.gradientMesh = new THREE.Mesh(geometry, material);
+    // Position at center of screen, far back
+    this.gradientMesh.position.set(this.width / 2, this.height / 2, -900);
+    this.scene.add(this.gradientMesh);
+
+    console.log('Gradient background created (Ota Tokyo style)');
+  }
+
   dispose() {
     if (this.composer) {
       this.composer.dispose();
     }
     if (this.postProcessing) {
       // WebGPU PostProcessing cleanup
+    }
+    if (this.gradientMesh) {
+      this.gradientMesh.geometry.dispose();
+      this.gradientMesh.material.dispose();
+      this.scene.remove(this.gradientMesh);
     }
     this.renderer.dispose();
   }

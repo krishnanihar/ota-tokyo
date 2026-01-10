@@ -27,17 +27,19 @@ export class MediaPipeSetup {
       console.log('MediaPipe: Vision WASM loaded (offline)');
 
       // Create pose landmarker with segmentation - MULTI-PERSON SUPPORT
+      // Using FULL model for better accuracy with back-facing/side-view detection
       console.log(`MediaPipe: Creating pose landmarker for ${this.maxPoses} people...`);
       this.poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
         baseOptions: {
-          modelAssetPath: '/mediapipe/pose_landmarker_lite.task',  // Local model
+          modelAssetPath: '/mediapipe/pose_landmarker_full.task',  // Full model for better back-view detection
           delegate: 'GPU'
         },
         runningMode: 'VIDEO',
         numPoses: this.maxPoses, // Track multiple people
-        minPoseDetectionConfidence: 0.5,
-        minPosePresenceConfidence: 0.5,
-        minTrackingConfidence: 0.5,
+        // Lower thresholds for better detection from all angles (front, back, side)
+        minPoseDetectionConfidence: 0.3,
+        minPosePresenceConfidence: 0.3,
+        minTrackingConfidence: 0.3,
         outputSegmentationMasks: true
       });
       console.log(`MediaPipe: Pose landmarker created for ${this.maxPoses} people`);
@@ -55,12 +57,13 @@ export class MediaPipeSetup {
   }
 
   async setupCamera() {
+    // Camera constraints - no facingMode restriction for installation flexibility
     const constraints = {
       video: {
         width: { ideal: 1280 },
         height: { ideal: 720 },
-        facingMode: 'user',
         frameRate: { ideal: 30 }
+        // No facingMode - allows any camera (front, back, external)
       }
     };
 
